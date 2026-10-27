@@ -2,6 +2,13 @@
 
 All notable changes to Vela, newest first.
 
+## [Unreleased]
+
+### Added
+
+- **Footprint charts.** Set the price style to Footprint and each bar becomes a ladder of price rows. A row reads as bid × ask — sell-aggressor size, then buy-aggressor size — colored green when buyers dominate, red when sellers do, with the ratio you set. The heaviest row is marked, and each bar can show its delta and total size underneath. Numbers appear once a cell is large enough to hold them; zoomed out, the ladder stays a heatmap. Build the series from prints with `buildFootprintFromTrades` (a tick size, or an automatic one that keeps a typical bar around 10–20 rows) and pass it with `setChartTypeData('footprint', …)`. Until you do, the chart spreads each bar's volume across its range so the style is visible — that spread is not real bid/ask.
+- **Market profile (TPO) charts.** Set the price style to TPO and each session (a UTC day, unless you change it) draws one profile: a letter per period, A–Z then a–x, stacked across the price rows that period traded. The point of control, a value area (70% unless you change it) and optional initial balance are marked, and the value-area high, low and point of control are labeled. Letters become blocks when you zoom out. `computeTpoProfiles` builds the profiles from candles and `computeTpoFromTrades` from prints; with neither, the chart profiles the bars it already has.
+
 ## [0.9.0]
 
 ### Added

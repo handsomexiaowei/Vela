@@ -155,6 +155,9 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
     private readonly typeSettings = new Map<string, Record<string, unknown>>();
     /** The style id whose data engine is currently ACTIVE (drives suspend/resume + pokes). */
     private activeEngineStyle: string | null = null;
+    /** Host-supplied series per chart type (`setChartTypeData`). Cleared on a market
+     *  identity change — the payload is keyed by the old market's bar times. */
+    private readonly chartTypeExternal = new Map<string, unknown>();
     /** The chart's current price style (tracked from the renderer's change events + initial read). */
     private priceStyle: PriceStyle = 'candles';
     private priceStyleWillChangeUnsub: Unsubscribe | null = null;
@@ -823,6 +826,9 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
                     this.renderer.setNativeData?.(this.activeEngineStyle, undefined);
                     this.renderer.setNativeData?.(`${this.activeEngineStyle}-pending`, []);
                 }
+                // Prints and profiles name the old market's bars. Drop them with the bars;
+                // the host supplies the new market's series after `market:changed`.
+                this.chartTypeExternal.clear();
                 // Native indicators ride the old market too, and a layer payload is just as
                 // time-keyed: with no bars on the axis, every entry maps to the same slot. Release
                 // them now (the post-load restart builds fresh instances) and blank their channels.
@@ -1582,7 +1588,22 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
             pushPending: (ranges) => {
                 if (reachesScene()) this.renderer.setNativeData?.(`${id}-pending`, ranges);
             },
+            externalData: () => this.chartTypeExternal.get(id),
         });
+    }
+
+    /**
+     * Replace the secondary series a chart type paints (`'footprint'` bars, `'tpo'`
+     * profiles, or a plugin type's own payload). `null` clears it and the type's
+     * engine falls back to whatever it derives from the chart's bars. Stored until
+     * the style is entered, and dropped on a market identity change.
+     */
+    setChartTypeData(typeId: string, data: unknown): void {
+        if (typeof typeId !== 'string' || typeId.length === 0) return;
+        if (data == null) this.chartTypeExternal.delete(typeId);
+        else this.chartTypeExternal.set(typeId, data);
+        const engine = this.typeEngines.get(typeId);
+        if (engine && !this.suspendedEngines.has(engine)) engine.onExternalData?.();
     }
 
     /**

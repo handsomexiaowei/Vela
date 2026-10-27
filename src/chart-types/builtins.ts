@@ -5,6 +5,8 @@ import { msg } from '../core/i18n/message';
 import { registerChartType } from './registry';
 import { heikinAshiFull, heikinAshiNext } from '../core/price-styles/heikin-ashi';
 import type { BarTransform } from '../core/price-styles/BarTransform';
+import { registerFootprintChartType } from './footprint';
+import { registerTpoChartType } from './tpo';
 
 /** Singleton so the orchestrator can compare transforms by identity across style flips. */
 const HEIKIN_ASHI: BarTransform = { full: heikinAshiFull, next: heikinAshiNext };
@@ -12,4 +14,6 @@ const HEIKIN_ASHI: BarTransform = { full: heikinAshiFull, next: heikinAshiNext }
 /** Register the built-in chart types (idempotent — called by the Vela constructor). */
 export function registerBuiltinChartTypes(): void {
     registerChartType({ id: 'heikinashi', label: msg('chart.priceStyle.heikinashi', 'Heikin Ashi'), barTransform: HEIKIN_ASHI });
+    registerFootprintChartType();
+    registerTpoChartType();
 }

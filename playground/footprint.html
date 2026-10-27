@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Vela — footprint</title>
+        <style>
+            html, body { margin: 0; height: 100%; background: #131722; color: #d1d4dc; font-family: -apple-system, system-ui, sans-serif; }
+            #chart { position: absolute; inset: 0; }
+            #bar {
+                position: absolute; top: 10px; left: 12px; z-index: 5;
+                display: flex; gap: 8px; align-items: center;
+                font-size: 12px; color: #b2b5be;
+            }
+            button {
+                font: inherit; color: #d1d4dc; background: #1c1d20; border: 1px solid #2a2b30;
+                border-radius: 4px; padding: 4px 8px; cursor: pointer;
+            }
+            button:hover { border-color: #2962ff; }
+            a { color: #8ab4ff; }
+        </style>
+    </head>
+    <body>
+        <div id="chart"></div>
+        <div id="bar">
+            <a href="./index.html">Playground</a>
+            <span id="status">Sample prints</span>
+            <button id="live" type="button">Load Binance BTCUSDT trades</button>
+        </div>
+        <script type="module" src="./footprint.ts"></script>
+    </body>
+</html>

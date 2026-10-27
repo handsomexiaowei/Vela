@@ -37,12 +37,14 @@ registerChartType({
             // host.data      → the chart's DataControl (providers, capabilities)
             // host.pushData(payload)        → the renderer channel named after YOUR id
             // host.pushPending(ranges)      → the `${id}-pending` loading protocol
+            // host.externalData()           → chart.setChartTypeData(id, …), or undefined
         },
         suspend() {},   // style switched away — pause work, keep state
         resume() {},    // style switched back
         stop() {},      // chart destroyed
         onViewport?(range) {},  // debounced visible-range pokes (backfill on scroll)
         onBars?() {},           // the chart's bars changed: tick, new bar, prepended history
+        onExternalData?() {},   // setChartTypeData replaced this style's payload
     }),
 });
 ```
@@ -53,6 +55,12 @@ switch, or entering/leaving a [bar replay](../user/api-reference.md#chartreplay-
 stops it and builds a fresh one — during a replay `host.live` is `false` and `host.bars()`
 ends at the replay cursor, so an engine that keys its fetches off `host.bars()` never sees
 past it; `onBars` tells it when the cursor advanced.
+
+`chart.setChartTypeData(id, data)` stores a host payload the engine reads back as
+`host.externalData()`. `null` clears it. A market change clears every type's payload,
+because it was keyed by the old bars; set it again from `market:changed`. The built-in
+footprint and TPO styles are the reference consumers — see
+[Footprint and market profile](../user/order-flow.md).
 
 Two more levers for full-replacement types:
 

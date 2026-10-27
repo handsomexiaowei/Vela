@@ -29,6 +29,8 @@ import { registerVpvr } from './core/native-indicators/vpvr';
 import { registerClassicIndicators } from './core/native-indicators/classics';
 import { LocaleState, pickLocalization } from './core/i18n/translator';
 import type { LocalizationOptions, Translator } from './core/i18n/types';
+import { registerOrderFlowLayers } from './renderers/native/orderflow/layers';
+import type { FootprintBar, FootprintSeries, TpoProfile } from './core/orderflow';
 
 const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
 
@@ -74,6 +76,7 @@ export class Vela {
 
     constructor(container: HTMLElement | string, options: VelaOptions = {}, deps: VelaDeps = {}) {
         registerBuiltinChartTypes(); // built-in chart types through the public SDK registry (idempotent)
+        registerOrderFlowLayers(); // footprint + TPO canvases, before the renderer mounts and copies the layer list
         registerVolume(); // register the built-in native indicators (idempotent)
         registerVpvr();
         registerClassicIndicators();
@@ -462,6 +465,27 @@ export class Vela {
     /** Set the visible time range explicitly (epoch-ms). Use for a custom date range. */
     setVisibleRange(range: VisibleRange): this {
         this.orchestrator.setVisibleRange(range);
+        return this;
+    }
+
+    /**
+     * Supply the secondary series a chart type paints, or `null` to clear it.
+     *
+     * - `'footprint'` — `FootprintBar[]`, or the `{ bars, tickSize }` result of
+     *   `buildFootprintFromTrades`. Cleared, the chart estimates a ladder from
+     *   each bar's volume (not real bid/ask).
+     * - `'tpo'` — `TpoProfile[]` from `computeTpoProfiles` / `computeTpoFromTrades`.
+     *   Cleared, the chart builds profiles from its own bars.
+     *
+     * Any other id is forwarded to that chart type's data engine. The value is
+     * kept until the style is shown, and dropped when the market changes — set it
+     * again after `market:changed`.
+     */
+    setChartTypeData(typeId: 'footprint', data: readonly FootprintBar[] | FootprintSeries | null): this;
+    setChartTypeData(typeId: 'tpo', data: readonly TpoProfile[] | { profiles: readonly TpoProfile[] } | null): this;
+    setChartTypeData(typeId: string, data: unknown): this;
+    setChartTypeData(typeId: string, data: unknown): this {
+        this.orchestrator.setChartTypeData(typeId, data);
         return this;
     }
 

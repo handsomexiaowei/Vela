@@ -36,6 +36,12 @@ export interface SeriesDataEngineHost {
     pushData: (data: unknown) => void;
     /** Push the ranges still loading (the `<id>-pending` channel — skeleton/reveal UIs). */
     pushPending: (ranges: ReadonlyArray<readonly [number, number]>) => void;
+    /**
+     * The latest payload passed to `chart.setChartTypeData(id, …)` for this style,
+     * or `undefined` when the host has not set one (`null` clears it). Read fresh —
+     * a market switch drops it, because the prints belong to the market that set them.
+     */
+    externalData(): unknown;
 }
 
 /**
@@ -70,6 +76,12 @@ export interface SeriesDataEngine {
      *  accept a pre-start call as pure configuration, so it never fetches on
      *  schema defaults the user has edited away. */
     onSettings?(values: Record<string, unknown>): void;
+    /**
+     * `chart.setChartTypeData` changed this style's payload. Also safe before
+     * `start()` (store it; `host.externalData()` is the same value). A call while
+     * the engine is suspended is skipped — `resume()` re-reads the host.
+     */
+    onExternalData?(): void;
 }
 
 /** One registered chart type. */

@@ -54,7 +54,7 @@ const chart = new Vela('#chart', {
   theme,
   upColor: '#26a69a',           // candle colors live at the TOP level (the theme's up/down don't reach the candles)
   downColor: '#ef5350',
-  priceStyle: 'candles',        // candles | bars | line | area | baseline
+  priceStyle: 'candles',        // candles | bars | line | area | baseline | heikinashi | footprint | tpo
   currentPriceLine: true,
   logScale: false,
   glow: 0.4,                    // WebGL2 only

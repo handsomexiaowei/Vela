@@ -353,7 +353,7 @@ export interface ChartConfig {
 const LINE_STYLES: readonly LineStyle[] = ['solid', 'dashed', 'dotted'];
 /** The library's own price styles, in picker order — {@link priceStyleIds} appends the
  *  SDK-registered chart types after these, so UIs can group the two families. */
-export const BUILTIN_PRICE_STYLES: readonly PriceStyle[] = ['candles', 'bars', 'line', 'area', 'baseline', 'heikinashi'];
+export const BUILTIN_PRICE_STYLES: readonly PriceStyle[] = ['candles', 'bars', 'line', 'area', 'baseline', 'heikinashi', 'footprint', 'tpo'];
 
 /** Base price-series painting for a style: built-ins paint themselves; a plugin type
  *  may declare `basePainting: 'none'` to suppress candles under its layer. */

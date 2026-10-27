@@ -78,6 +78,14 @@ registerIcon(
     'style-heikinashi',
     S('<path d="M4.5 12v2M11.5 2v2"/><rect x="2.8" y="5" width="3.4" height="7" rx="0.6" fill="currentColor" fill-opacity="0.25"/><rect x="9.8" y="4" width="3.4" height="7" rx="0.6" fill="currentColor"/>'),
 );
+registerIcon(
+    'style-footprint',
+    S('<rect x="3" y="1.6" width="10" height="3.4" rx="0.4"/><rect x="3" y="6.3" width="10" height="3.4" rx="0.4" fill="currentColor" fill-opacity="0.35"/><rect x="3" y="11" width="10" height="3.4" rx="0.4"/>'),
+);
+registerIcon(
+    'style-tpo',
+    S('<path d="M2 3h5M2 6.5h12M2 10h8M2 13.5h4"/>'),
+);
 
 // ── widget chrome icons ──
 registerIcon('indicators', S('<path d="M1.5 12.5 5 7l2.5 3.5L11 4l3.5 5"/><circle cx="11" cy="4" r="1.4" fill="currentColor" stroke="none"/>'));

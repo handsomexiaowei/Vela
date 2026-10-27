@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe('hasOwnCandlePaint', () => {
     it('is false for every built-in (heikin-ashi shares the candles block)', () => {
-        for (const s of ['candles', 'bars', 'line', 'area', 'baseline', 'heikinashi']) {
+        for (const s of ['candles', 'bars', 'line', 'area', 'baseline', 'heikinashi', 'footprint', 'tpo']) {
             expect(hasOwnCandlePaint(s)).toBe(false);
         }
     });

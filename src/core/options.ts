@@ -356,7 +356,7 @@ export type NativeBackend = 'auto' | 'canvas2d' | 'webgl2';
  *  bars applied at the core's bar seam, so indicators compute on the same
  *  smoothed values the chart shows (raw data stays untouched underneath). */
 /** Built-in styles plus any id registered through the chart-type SDK (`registerChartType`). */
-export type PriceStyle = 'candles' | 'bars' | 'line' | 'area' | 'baseline' | 'heikinashi' | (string & {});
+export type PriceStyle = 'candles' | 'bars' | 'line' | 'area' | 'baseline' | 'heikinashi' | 'footprint' | 'tpo' | (string & {});
 
 /** Display options passed to a renderer at construction. */
 export interface RendererDisplayOptions {

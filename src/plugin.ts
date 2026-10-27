@@ -86,6 +86,46 @@ export {
     type SeriesDataEngineHost,
 } from './chart-types/registry';
 export type { BarTransform } from './core/price-styles/BarTransform';
+// Footprint and TPO (market profile): pure builders a host runs over its own prints
+// or sub-bars, then hands to `chart.setChartTypeData` while `priceStyle` is the
+// matching id. The chart paints them; these functions do not touch a renderer.
+export {
+    autoTickSize,
+    bucketPrice,
+    niceTickSize,
+    buildFootprintFromTrades,
+    estimateFootprintFromBars,
+    footprintDrawsText,
+    footprintPoc,
+    footprintSide,
+    footprintSummary,
+    inferTickSize,
+    FOOTPRINT_TEXT_MIN_HEIGHT,
+    FOOTPRINT_TEXT_MIN_WIDTH,
+    TPO_ALPHABET,
+    TPO_LETTER_MIN_HEIGHT,
+    TPO_LETTER_MIN_WIDTH,
+    computeTpoFromTrades,
+    computeTpoProfiles,
+    profileWithInitialBalance,
+    profileWithValueArea,
+    tpoDrawsLetters,
+    tpoLetter,
+} from './core/orderflow';
+export type {
+    FootprintBar,
+    FootprintBuildOptions,
+    FootprintEstimateOptions,
+    FootprintLevel,
+    FootprintSeries,
+    FootprintSide,
+    FootprintSummary,
+    TradePrint,
+    TpoComputeOptions,
+    TpoInitialBalance,
+    TpoProfile,
+    TpoRow,
+} from './core/orderflow';
 export { registerRendererDefaults, unregisterRendererDefaults, rendererDefaults } from './core/renderer-defaults';
 export {
     registerNativeIndicator,
