@@ -55,6 +55,33 @@ call `setChartTypeData` again. A market change drops the series; set it again af
 `buildFootprintFromTrades`, `footprintSide`, `footprintPoc` and `footprintSummary`
 are pure. `autoTickSize` and `bucketPrice` are the row math they share with TPO.
 
+Behind the numbers, bid volume grows from the left in red and ask volume from the
+right in green. The point of control is outlined in white. Sizes use a `k` / `m`
+suffix (`1.2k`). A column narrower than 52 CSS pixels is not drawn, so at a wide
+zoom the bars stay candles; zoom in and the ladders open. Hide candles removes the
+bodies for the whole style.
+
+Hovering a cell shows the row's price range (`80640 – 80896`), bid x ask, the
+bar's volume, its delta, and the hint "Shift to magnify". Shift still zooms the
+chart through the normal key; the ladder does not open a separate magnifier.
+
+### Settings
+
+The Footprint section in chart settings has these groups:
+
+| Group | What it controls |
+|---|---|
+| Display | Mode (Bid x Ask Profile, Volume, Delta), cell values, average trade size, position (Right / Left / Center), row size (Auto or a price), Hide candles, text size and color, shrink-to-fit, gradient cells, ask color, bid color, area background |
+| VA & POC | Value area and its percent, line width, point of control, POC width, extend POC until a later bar trades through it |
+| Imbalances | Highlight, ratio in percent (300 = 3×), highlight width, recolor the numbers, stacked imbalances and the minimum run |
+| Unfinished auctions | On/off, minimum volume that counts as a side, line width, extend the line until price revisits that level |
+| Stat table | Below or above the box, text size, and toggles for total, buy, sell, buy %, sell %, delta, delta %, trade count, bid count, ask count |
+| Filters | Optional min–max on volume, bid volume, and ask volume. A bound left at 0 is off |
+
+An extreme is unfinished when either side at that row is not strictly above the
+minimum. A stack is a run of the same imbalance side at least as long as the
+minimum (default 3).
+
 ## Market profile (TPO)
 
 One profile per session. The default session is a UTC day (24 hours from UTC
@@ -101,9 +128,77 @@ below the period.
 `tpoLetter(0)` is `'A'`. `profileWithValueArea` and `profileWithInitialBalance`
 rebuild those two marks on a profile you already computed.
 
+## Hosted footprint and candle feeds
+
+The hosted chart reads precomputed footprints and the candles TPO is built from.
+Both are optional adapters — pass the JSON through the pure converter, or let
+`fetchLuxalgoFootprints` / `fetchLuxalgoCandles` do the GET.
+
+```ts
+import { fetchLuxalgoFootprints, fetchLuxalgoCandles, footprintFromLuxalgo } from '@luxalgo/vela';
+
+const series = await fetchLuxalgoFootprints({
+  symbol: 'BTCUSDT',   // venue defaults to 'binance'
+  from, to,            // epoch milliseconds
+  tf: 60,              // bar size in SECONDS (60 = one minute)
+  session: 'extended', // the live partial bar; omit for closed history
+});
+chart.setChartTypeData('footprint', series);
+
+const candles = await fetchLuxalgoCandles({
+  symbol: 'BTCUSDT',
+  from, to,
+  tfMin: 30,           // bar size in MINUTES — what a TPO session is built from
+});
+```
+
+`GET /v1/{venue}/{symbol}/footprints?from&to&tf` returns:
+
+```json
+{
+  "tick": 10,
+  "slices": [{ "t": 1710000000000, "levels": [[80640, 1.5, 2.5, 7, 15]] }],
+  "meta": { "from": 1710000000000, "to": 1710003600000, "level": 60, "pending": [], "planLimit": { "tickMult": 5 } }
+}
+```
+
+Each level is `[price, bid, ask, bidCount, askCount]`: sell-aggressor volume,
+buy-aggressor volume, then the print counts. `tick` is the row size in price.
+`tf` is seconds. The server can return a shorter window than you asked for;
+`meta.from` and `meta.to` are that window, and `meta.pending` lists ranges still
+computing. `footprintFromLuxalgo` accepts this object if you already have it.
+
+`GET /v1/{venue}/{symbol}/candles?tfMin&from&to&partial=1` returns
+`{ "bars": [{ "t", "o", "h", "l", "c", "v" }] }`. `tfMin` is minutes. TPO is not
+a server profile: request 30-minute candles (a day at a time is the usual chunk)
+and pass them to the chart or to `computeTpoProfiles`.
+
+## TPO settings
+
+| Group | What it controls |
+|---|---|
+| Sessions | Session Day or Week, trading hours Full day or Custom, block interval in minutes (default 30), row size Auto |
+| Display | Show blocks, color each block by its period, theme Simple, outside-value-area opacity, show letters, block color |
+| Structure | Value area percent, VA fill, point of control, extend POC until price is reached again, POC/VAH/VAL labels, initial balance and its length in minutes (default 60), single prints, poor high/low |
+| Volume profile | On/off, position Right or Left, width percent, its own POC and value area, VA opacity, labels |
+| Markers | Open/close dots (yellow open, orange close) and a midpoint dash on the left of the profile |
+
+A single print is a row with one letter. A poor high or poor low is that one-letter
+row sitting on the extreme of the profile. Blocks inside the value area are drawn
+solid; blocks outside use the outside opacity (default 35%). The initial balance
+defaults to 60 minutes, which is two 30-minute blocks.
+
 ## What the chart does not do
 
-The chart does not open a trade socket. Whoever has the prints — your feed, a
-playback — builds the series and calls `setChartTypeData`. The playground pages
-`footprint.html` and `tpo.html` ship a fixed sample and, on the footprint page, a
-control that loads recent public aggregated trades for BTCUSDT.
+The chart does not open a trade socket by itself. Call `fetchLuxalgoFootprints`
+(or build prints yourself) and `setChartTypeData` again as the live bar moves.
+The settings dialog does not embed a simulated preview of the ladder; the options
+apply to the chart directly. Imbalance is measured on a row (ask versus bid at
+the same price), not on the diagonal between neighboring rows. The TPO theme
+list has Simple only. Shift-to-magnify is named in the footprint tooltip and uses
+the chart's own zoom keys rather than a second magnifier. A bar that crosses a
+session boundary stays on the session of its open.
+
+The playground pages `footprint.html` and `tpo.html` load the hosted feed when it
+answers, and otherwise draw a fixed sample. The footprint page can also load
+recent public aggregated trades.

@@ -36,6 +36,9 @@ export interface TpoRow {
     price: number;
     /** Period indexes (into the session) that traded this row, ascending. */
     periods: number[];
+    /** Volume printed into this row, when the source bars carried volume. Split evenly
+     *  across the rows a bar touched, so the rows of one bar sum back to that bar. */
+    volume?: number;
 }
 
 /** Price span of the leading periods. `high` is the top edge of the highest row they touched. */
@@ -67,6 +70,10 @@ export interface TpoProfile {
     /** Letter count across every row. */
     totalTpos: number;
     ib: TpoInitialBalance | null;
+    /** First bar's open, or the first print's price. */
+    open?: number;
+    /** Last bar's close, or the last print's price. */
+    close?: number;
 }
 
 export interface TpoComputeOptions {
@@ -92,6 +99,7 @@ interface Candle {
     high: number;
     low: number;
     close: number;
+    volume?: number;
 }
 
 /** A price span one period traded, still in raw prices. Expanded onto the tick grid once
@@ -100,6 +108,7 @@ interface Span {
     low: number;
     high: number;
     period: number;
+    volume?: number;
 }
 
 interface SessionBuild {
@@ -109,6 +118,10 @@ interface SessionBuild {
     spans: Span[];
     low: number;
     high: number;
+    open?: number;
+    close?: number;
+    openTime?: number;
+    closeTime?: number;
 }
 
 const DAY_MS = 86_400_000;
@@ -140,7 +153,10 @@ export function computeTpoProfiles(candles: readonly Candle[], options: TpoCompu
         const period0 = Math.min(lastPeriod, periodOf(bar.time, start, cfg.periodMs));
         const period1 = Math.min(lastPeriod, periodOf(Math.max(bar.time, end - 1), start, cfg.periodMs));
         const session = ensure(sessions, start, bar.time, end, bar.low, bar.high);
-        for (let p = period0; p <= period1; p += 1) session.spans.push({ low: bar.low, high: bar.high, period: p });
+        notePrint(session, bar.time, bar.open, bar.close);
+        const nPeriods = period1 - period0 + 1;
+        const per = bar.volume != null && bar.volume > 0 ? bar.volume / nPeriods : undefined;
+        for (let p = period0; p <= period1; p += 1) session.spans.push({ low: bar.low, high: bar.high, period: p, volume: per });
     }
     return finish(sessions, cfg);
 }
@@ -158,6 +174,7 @@ export function computeTpoFromTrades(
         const period = periodOf(trade.time, start, cfg.periodMs);
         const periodEnd = start + (period + 1) * cfg.periodMs;
         const session = ensure(sessions, start, trade.time, periodEnd, trade.price, trade.price);
+        notePrint(session, trade.time, trade.price, trade.price);
         session.spans.push({ low: trade.price, high: trade.price, period });
     }
     return finish(sessions, cfg);
@@ -201,12 +218,15 @@ function finish(sessions: Map<number, SessionBuild>, cfg: Resolved): TpoProfile[
 
 function expand(spans: readonly Span[], tick: number): TpoRow[] {
     const byPrice = new Map<number, Set<number>>();
+    const volByPrice = new Map<number, number>();
     for (const span of spans) {
         const start = bucketPrice(Math.min(span.low, span.high), tick);
         const end = bucketPrice(Math.max(span.low, span.high), tick);
+        const prices: number[] = [];
         for (let i = 0; i < MAX_ROWS; i += 1) {
             const price = Number((start + i * tick).toPrecision(12));
             if (price > end + tick * 1e-9) break;
+            prices.push(price);
             let set = byPrice.get(price);
             if (!set) {
                 set = new Set();
@@ -214,10 +234,30 @@ function expand(spans: readonly Span[], tick: number): TpoRow[] {
             }
             set.add(span.period);
         }
+        if (span.volume != null && span.volume > 0 && prices.length > 0) {
+            const share = span.volume / prices.length;
+            for (const price of prices) volByPrice.set(price, (volByPrice.get(price) ?? 0) + share);
+        }
     }
     return [...byPrice.entries()]
-        .map(([price, periods]) => ({ price, periods: [...periods].sort((a, b) => a - b) }))
+        .map(([price, periods]) => {
+            const volume = volByPrice.get(price);
+            const row: TpoRow = { price, periods: [...periods].sort((a, b) => a - b) };
+            if (volume != null && volume > 0) row.volume = volume;
+            return row;
+        })
         .sort((a, b) => a.price - b.price);
+}
+
+function notePrint(session: SessionBuild, time: number, open: number, close: number): void {
+    if (session.openTime == null || time < session.openTime) {
+        session.openTime = time;
+        session.open = open;
+    }
+    if (session.closeTime == null || time >= session.closeTime) {
+        session.closeTime = time;
+        session.close = close;
+    }
 }
 
 function assemble(build: SessionBuild, rows: TpoRow[], tick: number, cfg: Resolved): TpoProfile | null {
@@ -237,7 +277,21 @@ function assemble(build: SessionBuild, rows: TpoRow[], tick: number, cfg: Resolv
         valueArea: cfg.valueArea,
         totalTpos: total,
         ib: cfg.ibPeriods > 0 ? initialBalance(rows, tick, cfg.ibPeriods) : null,
+        ...(build.open != null ? { open: build.open } : {}),
+        ...(build.close != null ? { close: build.close } : {}),
     };
+}
+
+/** Rows that a single period printed — a one-letter row. */
+export function tpoSinglePrintRows(profile: TpoProfile): TpoRow[] {
+    return profile.rows.filter((row) => row.periods.length === 1);
+}
+
+/** A poor high (or low) is an extreme row with only one letter: price barely traded there. */
+export function tpoPoorExtremes(profile: TpoProfile): { poorHigh: boolean; poorLow: boolean } {
+    const rows = profile.rows;
+    if (rows.length === 0) return { poorHigh: false, poorLow: false };
+    return { poorLow: rows[0]!.periods.length === 1, poorHigh: rows[rows.length - 1]!.periods.length === 1 };
 }
 
 /**

@@ -9,20 +9,68 @@ import { paintFootprint } from './paintFootprint';
 import { paintTpo } from './paintTpo';
 
 export function registerOrderFlowLayers(): void {
-    registerRendererLayer({ id: 'footprint', placement: 'above-data', create: () => new CanvasLayer('footprint', paintFootprintLayer) });
-    registerRendererLayer({ id: 'tpo', placement: 'above-data', create: () => new CanvasLayer('tpo', paintTpoLayer) });
+    registerRendererLayer({
+        id: 'footprint',
+        placement: 'above-data',
+        repaintOnCursor: true,
+        create: () => new FootprintLayer(),
+    });
+    registerRendererLayer({ id: 'tpo', placement: 'above-data', create: () => new TpoLayer() });
 }
 
-type Paint = (ctx: CanvasRenderingContext2D, args: RendererLayerArgs) => void;
-
-class CanvasLayer implements RendererLayerInstance {
+class FootprintLayer implements RendererLayerInstance {
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
 
-    constructor(
-        private readonly styleId: string,
-        private readonly paint: Paint,
-    ) {}
+    mount(canvas: HTMLCanvasElement): void {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+    }
+
+    render(args: RendererLayerArgs): void {
+        const ctx = this.clear(args);
+        if (!ctx || args.priceStyle !== 'footprint') return;
+        const series = asFootprint(args.data);
+        if (!series) return;
+        paintFootprint(ctx, {
+            series,
+            times: args.bars.map((b: OHLCV) => b.time),
+            bars: args.bars,
+            settings: args.settings,
+            coords: args.coords,
+            scale: args.scale,
+            bounds: args.bounds,
+            i18n: args.i18n,
+            cursor: args.cursor,
+        });
+    }
+
+    /** "Hide candles" drops the candle bodies for the whole style. Otherwise narrow
+     *  bars stay candles and only wide columns carry a ladder. */
+    modulateBase(args: RendererLayerArgs) {
+        if (args.priceStyle !== 'footprint') return null;
+        return args.settings.hideCandles === true ? { candleBodyAlpha: 0, candleBodyScale: 0 } : null;
+    }
+
+    destroy(): void {
+        this.canvas = null;
+        this.ctx = null;
+    }
+
+    private clear(args: RendererLayerArgs): CanvasRenderingContext2D | null {
+        const ctx = this.ctx;
+        const canvas = this.canvas;
+        if (!ctx || !canvas) return null;
+        beginPlotFrame(ctx, args.coords.dpr);
+        ctx.clearRect(0, 0, canvas.width / args.coords.dpr, canvas.height / args.coords.dpr);
+        if (args.bounds.height <= 0) return null;
+        return ctx;
+    }
+}
+
+class TpoLayer implements RendererLayerInstance {
+    private canvas: HTMLCanvasElement | null = null;
+    private ctx: CanvasRenderingContext2D | null = null;
 
     mount(canvas: HTMLCanvasElement): void {
         this.canvas = canvas;
@@ -35,41 +83,24 @@ class CanvasLayer implements RendererLayerInstance {
         if (!ctx || !canvas) return;
         beginPlotFrame(ctx, args.coords.dpr);
         ctx.clearRect(0, 0, canvas.width / args.coords.dpr, canvas.height / args.coords.dpr);
-        if (args.priceStyle !== this.styleId || args.bounds.height <= 0) return;
-        this.paint(ctx, args);
+        if (args.priceStyle !== 'tpo' || args.bounds.height <= 0) return;
+        const profiles = asProfiles(args.data);
+        if (!profiles) return;
+        paintTpo(ctx, {
+            profiles,
+            bars: args.bars,
+            settings: args.settings,
+            coords: args.coords,
+            scale: args.scale,
+            bounds: args.bounds,
+            i18n: args.i18n,
+        });
     }
 
     destroy(): void {
         this.canvas = null;
         this.ctx = null;
     }
-}
-
-function paintFootprintLayer(ctx: CanvasRenderingContext2D, args: RendererLayerArgs): void {
-    const series = asFootprint(args.data);
-    if (!series) return;
-    paintFootprint(ctx, {
-        series,
-        times: args.bars.map((b: OHLCV) => b.time),
-        settings: args.settings,
-        coords: args.coords,
-        scale: args.scale,
-        bounds: args.bounds,
-        i18n: args.i18n,
-    });
-}
-
-function paintTpoLayer(ctx: CanvasRenderingContext2D, args: RendererLayerArgs): void {
-    const profiles = asProfiles(args.data);
-    if (!profiles) return;
-    paintTpo(ctx, {
-        profiles,
-        settings: args.settings,
-        coords: args.coords,
-        scale: args.scale,
-        bounds: args.bounds,
-        i18n: args.i18n,
-    });
 }
 
 function asFootprint(data: unknown): FootprintSeries | null {

@@ -91,7 +91,7 @@ describe('footprint and TPO chart types', () => {
         chart.setChartTypeData('footprint', built);
         const supplied = last(renderer, 'footprint') as FootprintSeries;
         expect(supplied.estimated).toBe(false);
-        expect(supplied.bars[0]!.levels).toEqual([{ price: 100, bid: 7, ask: 0 }]);
+        expect(supplied.bars[0]!.levels).toEqual([{ price: 100, bid: 7, ask: 0, bidCount: 1, askCount: 0 }]);
         chart.destroy();
     });
 

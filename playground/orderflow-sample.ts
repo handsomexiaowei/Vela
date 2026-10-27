@@ -34,8 +34,8 @@ export function sampleFootprint(): { bars: OHLCV[]; series: FootprintSeries } {
             const t = (p - low) / span;
             const up = close >= open;
             const bulge = Math.abs(t - 0.45) < 0.18 ? 4 : 1;
-            const ask = Math.round((18 + (up ? 70 * t : 24 * (1 - t)) + ((i * 3 + p * 4) % 11)) * bulge);
-            const bid = Math.round((18 + (up ? 22 * (1 - t) : 74 * t) + ((i * 5 + p) % 9)) * bulge);
+            const ask = Math.round((18 + (up ? 70 * t : 24 * (1 - t)) + ((i * 3 + p * 4) % 11)) * bulge) * 8;
+            const bid = Math.round((18 + (up ? 22 * (1 - t) : 74 * t) + ((i * 5 + p) % 9)) * bulge) * 8;
             trades.push({ time: t0 + 1_000, price: p, qty: ask, isBuyerMaker: false });
             trades.push({ time: t0 + 2_000, price: p, qty: bid, isBuyerMaker: true });
         }

@@ -14,6 +14,10 @@ export interface FootprintLevel {
     bid: number;
     /** Buy-aggressor volume. */
     ask: number;
+    /** How many sell-aggressor prints made up `bid`, when the source counted them. */
+    bidCount?: number;
+    /** How many buy-aggressor prints made up `ask`, when the source counted them. */
+    askCount?: number;
 }
 
 /** One bar's price-level volume. `time` is the bar open, epoch milliseconds, and must
@@ -200,11 +204,16 @@ function bucketTrades(trades: readonly TradePrint[], tick: number): FootprintLev
         const price = bucketPrice(trade.price, tick);
         let row = rows.get(price);
         if (!row) {
-            row = { price, bid: 0, ask: 0 };
+            row = { price, bid: 0, ask: 0, bidCount: 0, askCount: 0 };
             rows.set(price, row);
         }
-        if (trade.isBuyerMaker) row.bid += trade.qty;
-        else row.ask += trade.qty;
+        if (trade.isBuyerMaker) {
+            row.bid += trade.qty;
+            row.bidCount = (row.bidCount ?? 0) + 1;
+        } else {
+            row.ask += trade.qty;
+            row.askCount = (row.askCount ?? 0) + 1;
+        }
     }
     return [...rows.values()].sort((a, b) => a.price - b.price);
 }

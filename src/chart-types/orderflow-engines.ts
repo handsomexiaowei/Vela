@@ -7,6 +7,7 @@ import {
     inferTickSize,
     profileWithInitialBalance,
     profileWithValueArea,
+    rebucketFootprint,
     type FootprintBar,
     type FootprintLevel,
     type FootprintSeries,
@@ -18,9 +19,10 @@ import type { SeriesDataEngine, SeriesDataEngineHost } from './registry';
 
 export function footprintEngine(): SeriesDataEngine {
     return new PublishingEngine((host, settings) => {
+        const tick = positive(settings.tickSize);
         const external = coerceFootprint(host.externalData());
-        if (external) return external;
-        return estimateFootprintFromBars(host.bars(), { tickSize: positive(settings.tickSize), targetRows: 15 });
+        if (external) return tick ? rebucketFootprint(external, tick) : external;
+        return estimateFootprintFromBars(host.bars(), { tickSize: tick, targetRows: 15 });
     });
 }
 
@@ -28,7 +30,9 @@ export function tpoEngine(): SeriesDataEngine {
     return new PublishingEngine((host, settings) => {
         const external = coerceTpo(host.externalData());
         const valueArea = fraction(settings.valueAreaPct, 70);
-        const ibPeriods = count(settings.ibPeriods, 2);
+        const blockMin = positive(settings.blockMinutes) ?? positive(settings.periodMinutes) ?? 30;
+        const ibPeriods = ibCount(settings, blockMin);
+        const session = sessionWindow(settings);
         if (external) {
             return {
                 profiles: external.map((p) => profileWithInitialBalance(profileWithValueArea(p, valueArea), ibPeriods)),
@@ -37,9 +41,9 @@ export function tpoEngine(): SeriesDataEngine {
         const profiles = computeTpoProfiles(host.bars(), {
             tickSize: positive(settings.tickSize),
             targetRows: 16,
-            periodMs: minutes(settings.periodMinutes, 30),
-            sessionMs: (positive(settings.sessionHours) ?? 24) * 3_600_000,
-            sessionOffsetMs: offsetHours(settings.sessionOffsetHours) * 3_600_000,
+            periodMs: blockMin * 60_000,
+            sessionMs: session.ms,
+            sessionOffsetMs: session.offsetMs,
             valueArea,
             initialBalancePeriods: ibPeriods,
         });
@@ -154,16 +158,19 @@ function fraction(value: unknown, fallbackPct: number): number {
     return Math.min(1, Math.max(0, pct / 100));
 }
 
-function count(value: unknown, fallback: number): number {
-    const n = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback;
-    return Math.max(0, n);
+function ibCount(settings: Record<string, unknown>, blockMin: number): number {
+    const minutes = positive(settings.ibMinutes);
+    if (minutes) return Math.max(1, Math.round(minutes / blockMin));
+    if (typeof settings.ibPeriods === 'number' && Number.isFinite(settings.ibPeriods)) return Math.max(0, Math.round(settings.ibPeriods));
+    return Math.max(1, Math.round(60 / blockMin));
 }
 
-function minutes(value: unknown, fallback: number): number {
-    const n = typeof value === 'number' && value > 0 && Number.isFinite(value) ? value : fallback;
-    return n * 60_000;
-}
-
-function offsetHours(value: unknown): number {
-    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+/** Full day / full week ignore the hour offset. Custom hours use both knobs. */
+function sessionWindow(settings: Record<string, unknown>): { ms: number; offsetMs: number } {
+    const week = settings.sessionKind === 'week';
+    const custom = settings.tradingHours === 'custom';
+    if (!custom) return { ms: (week ? 7 : 1) * 86_400_000, offsetMs: 0 };
+    const hours = positive(settings.sessionHours) ?? (week ? 168 : 24);
+    const offset = typeof settings.sessionOffsetHours === 'number' && Number.isFinite(settings.sessionOffsetHours) ? settings.sessionOffsetHours : 0;
+    return { ms: hours * 3_600_000, offsetMs: offset * 3_600_000 };
 }

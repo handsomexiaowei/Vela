@@ -4,17 +4,29 @@ import {
     autoTickSize,
     bucketPrice,
     buildFootprintFromTrades,
+    candlesFromLuxalgo,
     computeTpoFromTrades,
     computeTpoProfiles,
     estimateFootprintFromBars,
     footprintDrawsText,
+    footprintFromLuxalgo,
     footprintPoc,
     footprintSide,
+    footprintStacks,
     footprintSummary,
+    footprintValueArea,
+    formatFootprintQty,
+    luxalgoCandlesUrl,
+    luxalgoFootprintUrl,
     niceTickSize,
+    priceRevisitedAt,
     profileWithValueArea,
+    rebucketFootprint,
     tpoDrawsLetters,
     tpoLetter,
+    tpoPoorExtremes,
+    tpoSinglePrintRows,
+    unfinishedAuctions,
     TPO_ALPHABET,
     type TradePrint,
 } from '../src/core/orderflow';
@@ -72,10 +84,10 @@ describe('footprint aggregation', () => {
         expect(tickSize).toBe(1);
         expect(bars.map((b) => b.time)).toEqual(barTimes);
         expect(bars[0]!.levels).toEqual([
-            { price: 100, bid: 5, ask: 2 },
-            { price: 101, bid: 0, ask: 4 },
+            { price: 100, bid: 5, ask: 2, bidCount: 1, askCount: 1 },
+            { price: 101, bid: 0, ask: 4, bidCount: 0, askCount: 1 },
         ]);
-        expect(bars[1]!.levels).toEqual([{ price: 102, bid: 9, ask: 0 }]);
+        expect(bars[1]!.levels).toEqual([{ price: 102, bid: 9, ask: 0, bidCount: 1, askCount: 0 }]);
         expect(bars[2]!.levels).toEqual([]);
     });
 
@@ -142,6 +154,81 @@ describe('footprint aggregation', () => {
     });
 });
 
+describe('footprint marks and the hosted feed', () => {
+    it('prints a k or m suffix and leaves small sizes plain', () => {
+        expect(formatFootprintQty(1200)).toBe('1.2k');
+        expect(formatFootprintQty(12000)).toBe('12k');
+        expect(formatFootprintQty(1_500_000)).toBe('1.5m');
+        expect(formatFootprintQty(42)).toBe('42');
+        expect(formatFootprintQty(-800)).toBe('-800');
+    });
+
+    it('grows a value area from the heaviest row and stacks a run of imbalances', () => {
+        const levels = [
+            { price: 1, bid: 9, ask: 1 },
+            { price: 2, bid: 9, ask: 1 },
+            { price: 3, bid: 1, ask: 20 },
+            { price: 4, bid: 1, ask: 1 },
+        ];
+        const area = footprintValueArea(levels, 1, 0.7);
+        expect(area!.pocPrice).toBe(3);
+        expect(area!.val).toBeLessThanOrEqual(3);
+        expect(area!.vah).toBeGreaterThan(3);
+        const stacks = footprintStacks(levels, 3, 2);
+        expect(stacks.map((s) => s.side)).toContain('bid');
+        expect(stacks.find((s) => s.side === 'bid')!.count).toBe(2);
+    });
+
+    it('marks an extreme unfinished when one side is empty, and stops an extension when price trades back', () => {
+        const levels = [
+            { price: 10, bid: 5, ask: 0 },
+            { price: 11, bid: 2, ask: 2 },
+            { price: 12, bid: 0, ask: 4 },
+        ];
+        expect(unfinishedAuctions(levels, 0).map((a) => a.edge).sort()).toEqual(['high', 'low']);
+        expect(unfinishedAuctions([{ price: 10, bid: 2, ask: 2 }], 0)).toEqual([]);
+        const bars = [
+            { time: 1, high: 5, low: 4 },
+            { time: 2, high: 9, low: 8 },
+            { time: 3, high: 12, low: 7 },
+        ];
+        expect(priceRevisitedAt(bars, 1, 8)).toBe(2);
+        expect(priceRevisitedAt(bars, 1, 100)).toBeNull();
+    });
+
+    it('folds rows onto a coarser tick and reads the hosted footprint tuple', () => {
+        const series = buildFootprintFromTrades(
+            [
+                { time: T0 + 1, price: 10, qty: 1, isBuyerMaker: true },
+                { time: T0 + 2, price: 12, qty: 4, isBuyerMaker: false },
+            ],
+            { barTimes: [T0], barMs: 60_000, tickSize: 1 },
+        );
+        const coarse = rebucketFootprint(series, 5);
+        expect(coarse.tickSize).toBe(5);
+        expect(coarse.bars[0]!.levels).toHaveLength(1);
+        expect(coarse.bars[0]!.levels[0]!.bid + coarse.bars[0]!.levels[0]!.ask).toBe(5);
+
+        const adapted = footprintFromLuxalgo({
+            tick: 10,
+            slices: [{ t: T0, levels: [[80640, 1.5, 2.5, 7, 15]] }],
+            meta: { from: T0, to: T0 + 60_000, level: 60, pending: [] },
+        });
+        expect(adapted.tickSize).toBe(10);
+        expect(adapted.bars[0]).toEqual({
+            time: T0,
+            levels: [{ price: 80640, bid: 1.5, ask: 2.5, bidCount: 7, askCount: 15 }],
+        });
+        expect(candlesFromLuxalgo({ bars: [{ t: T0, o: 1, h: 3, l: 0.5, c: 2, v: 9 }] })).toEqual([
+            { time: T0, open: 1, high: 3, low: 0.5, close: 2, volume: 9 },
+        ]);
+        expect(luxalgoFootprintUrl({ symbol: 'BTCUSDT', from: 1, to: 2, tf: 60, session: 'extended' })).toContain('/v1/binance/BTCUSDT/footprints?');
+        expect(luxalgoFootprintUrl({ symbol: 'BTCUSDT', from: 1, to: 2, tf: 60, session: 'extended' })).toContain('tf=60');
+        expect(luxalgoCandlesUrl({ symbol: 'BTCUSDT', from: 1, to: 2, tfMin: 30 })).toContain('tfMin=30');
+        expect(luxalgoCandlesUrl({ symbol: 'BTCUSDT', from: 1, to: 2, tfMin: 30 })).toContain('partial=1');
+    });
+});
+
 describe('TPO profiles', () => {
     const period = 30 * 60_000;
 
@@ -177,6 +264,11 @@ describe('TPO profiles', () => {
         expect(profile!.ib).toEqual({ low: 100, high: 103, periods: 2 });
         expect(tpoLetter(profile!.rows[1]!.periods[0]!)).toBe('A');
         expect(tpoLetter(profile!.rows[1]!.periods[1]!)).toBe('B');
+        expect(tpoPoorExtremes(profile!).poorHigh).toBe(true);
+        expect(tpoPoorExtremes(profile!).poorLow).toBe(true);
+        expect(tpoSinglePrintRows(profile!).map((row) => row.price)).toEqual([100, 102]);
+        expect(profile!.open).toBe(100);
+        expect(profile!.close).toBe(102);
     });
 
     it('opens a new profile when the session rolls, and keeps a short bar on one letter', () => {

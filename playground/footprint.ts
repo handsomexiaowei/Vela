@@ -2,7 +2,7 @@
 // button replaces it with recent public Binance aggregated trades — no key — bucketed
 // by the same buildFootprintFromTrades the library exports.
 import { Vela } from '../src/index';
-import { buildFootprintFromTrades, type FootprintSeries, type TradePrint } from '../src/core/orderflow';
+import { buildFootprintFromTrades, fetchLuxalgoCandles, fetchLuxalgoFootprints, type FootprintSeries, type TradePrint } from '../src/core/orderflow';
 import type { OHLCV } from '../src/core/model/ohlcv';
 import { FOOTPRINT_BAR_MS, sampleFootprint } from './orderflow-sample';
 
@@ -20,10 +20,35 @@ const chart = new Vela('#chart', {
 });
 chart.setChartTypeData('footprint', sample.series);
 
-void chart.ready().then(() => {
-    const last = sample.bars[sample.bars.length - 1]!;
-    chart.setVisibleRange({ from: sample.bars[0]!.time, to: last.time + FOOTPRINT_BAR_MS });
+void chart.ready().then(async () => {
+    const framed = await loadHosted().catch(() => false);
+    if (!framed) {
+        const last = sample.bars[sample.bars.length - 1]!;
+        chart.setVisibleRange({ from: sample.bars[0]!.time, to: last.time + FOOTPRINT_BAR_MS });
+        status.textContent = 'Sample prints';
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        (window as unknown as { __velaReady?: boolean }).__velaReady = true;
+    }));
 });
+
+/** The hosted footprint feed (tf is seconds). Falls back to the sample on any failure. */
+async function loadHosted(): Promise<boolean> {
+    const to = Date.now();
+    const from = to - 6 * 60 * 60_000;
+    const [series, bars] = await Promise.all([
+        fetchLuxalgoFootprints({ symbol: 'BTCUSDT', from, to, tf: 60 }),
+        fetchLuxalgoCandles({ symbol: 'BTCUSDT', from, to, tfMin: 1 }),
+    ]);
+    if (series.bars.length < 3 || bars.length < 3) return false;
+    await chart.setMarket({ data: bars, timeframe: '1' });
+    chart.setChartTypeData('footprint', series);
+    const last = bars[bars.length - 1]!;
+    const start = bars[Math.max(0, bars.length - 6)]!.time;
+    chart.setVisibleRange({ from: start - 60_000, to: last.time + 2 * 60_000 });
+    status.textContent = `Hosted footprints · tick ${series.tickSize} · ${series.bars.length} bars`;
+    return true;
+}
 
 document.querySelector<HTMLButtonElement>('#live')!.onclick = () => {
     status.textContent = 'Loading Binance trades…';
