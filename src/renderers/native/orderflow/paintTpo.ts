@@ -57,7 +57,7 @@ export function paintTpo(ctx: CanvasRenderingContext2D, input: TpoPaintInput): v
         if (!(profile.tickSize > 0) || profile.rows.length === 0) continue;
         const sessionX = coords.timeToX(profile.sessionStart);
         const sessionW = Math.max(1, coords.timeToX(profile.sessionEnd) - sessionX);
-        if (sessionX > coords.width || sessionX + sessionW < 0) continue;
+        if (sessionX >= coords.width || sessionX + sessionW <= 0) continue;
         const periodCount = Math.max(1, Math.round((profile.sessionEnd - profile.sessionStart) / profile.periodMs));
         const maxPeriod = profile.rows.reduce((m, row) => Math.max(m, ...row.periods), 0);
         const single = new Set(style.singlePrints ? tpoSinglePrintRows(profile).map((row) => row.price) : []);
@@ -102,7 +102,7 @@ export function paintTpo(ctx: CanvasRenderingContext2D, input: TpoPaintInput): v
         }
 
         if (style.showPoc) paintPoc(ctx, input, profile, sessionX, sessionW, periodCount, style);
-        if (style.showInitialBalance && profile.ib) paintIbBracket(ctx, coords, scale, bounds, sessionX, profile.ib.high, profile.ib.low, style.ibColor);
+        if (style.showInitialBalance && profile.ib) paintIbBracket(ctx, coords, scale, bounds, Math.max(1, sessionX), profile.ib.high, profile.ib.low, style.ibColor);
         if (style.levelLabels) {
             label(ctx, coords, scale, bounds, i18n.t(VAH), profile.vah, sessionX + sessionW, style.vaColor);
             label(ctx, coords, scale, bounds, i18n.t(VAL), profile.val, sessionX + sessionW, style.vaColor);
@@ -112,7 +112,7 @@ export function paintTpo(ctx: CanvasRenderingContext2D, input: TpoPaintInput): v
         if (poor.poorLow) tag(ctx, coords, scale, bounds, i18n.t(POOR_LOW), profile.rows[0]!, profile.tickSize, sessionX);
 
         if (style.volumeProfile) paintVolumeProfile(ctx, profile, style.vpPosition === 'left' ? sessionX : sessionX + sessionW - vpW, vpW, coords, scale, bounds, style);
-        if (style.markers) paintMarkers(ctx, profile, sessionX, coords, scale, bounds, style);
+        if (style.markers) paintMarkers(ctx, profile, Math.max(10, sessionX), coords, scale, bounds, style);
     }
     ctx.restore();
 }
@@ -132,12 +132,16 @@ function profilesForFrame(input: TpoPaintInput): TpoProfile[] {
     if (tick < base * 0.99 && input.bars.length > 0) {
         const sample = profiles[0]!;
         const sessionMs = sample.sessionEnd - sample.sessionStart;
+        // A partial session at the start of the data has no initial balance. Copy the
+        // period count from whichever session did compute one, so rebuilding rows does
+        // not clear the bracket on the sessions that still have their opening periods.
+        const ibPeriods = profiles.reduce((n, profile) => Math.max(n, profile.ib?.periods ?? 0), 0);
         const rebuilt = computeTpoProfiles(input.bars, {
             tickSize: tick,
             periodMs: sample.periodMs,
             ...(sessionMs > 0 ? { sessionMs, sessionOffsetMs: mod(sample.sessionStart, sessionMs) } : {}),
             valueArea: sample.valueArea,
-            initialBalancePeriods: sample.ib ? sample.ib.periods : 0,
+            initialBalancePeriods: ibPeriods,
         });
         if (rebuilt.length > 0) return rebuilt;
     }

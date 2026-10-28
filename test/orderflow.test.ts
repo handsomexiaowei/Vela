@@ -341,6 +341,13 @@ describe('TPO profiles', () => {
         expect(fromBars[0]!.ib).toBeNull();
     });
 
+    it('omits the initial balance when the loaded bars start after those periods', () => {
+        const late = T0 + 10 * period;
+        const [partial] = computeTpoProfiles([{ time: late, open: 10, high: 11, low: 10, close: 11 }], { tickSize: 1, initialBalancePeriods: 2 });
+        expect(partial!.ib).toBeNull();
+        expect(partial!.rows[0]!.periods).toEqual([10]);
+    });
+
     it('places each period in its own slot from the session start, growing right', () => {
         expect(tpoPeriodSlot(0, 48, 480)).toEqual({ x: 0, width: 9 });
         expect(tpoPeriodSlot(1, 48, 480)).toEqual({ x: 10, width: 9 });
