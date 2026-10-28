@@ -217,6 +217,46 @@ export function rebucketFootprint(series: FootprintSeries, tickSize: number): Fo
     return { bars, tickSize, estimated: series.estimated };
 }
 
+/** Pixel layout of one Bid x Ask row. Bars grow out from the cell's center: bid to the
+ *  left, ask to the right. Length is that side divided by `maxSide` (the largest bid
+ *  or ask in the bar), so the longest side reaches the cell edge. Labels sit against
+ *  the center: bid is right-aligned just left of it, ask left-aligned just right of it. */
+export interface BidAskRowGeometry {
+    center: number;
+    bidX: number;
+    bidW: number;
+    askX: number;
+    askW: number;
+    /** X for a right-aligned bid label. */
+    bidLabelX: number;
+    /** X for a left-aligned ask label. */
+    askLabelX: number;
+}
+
+export function bidAskRowGeometry(
+    cellX: number,
+    cellW: number,
+    bid: number,
+    ask: number,
+    maxSide: number,
+    labelGap = 4,
+): BidAskRowGeometry {
+    const center = cellX + cellW / 2;
+    const half = cellW / 2;
+    const scale = maxSide > 0 ? half / maxSide : 0;
+    const bidW = Math.max(0, bid) * scale;
+    const askW = Math.max(0, ask) * scale;
+    return {
+        center,
+        bidX: center - bidW,
+        bidW,
+        askX: center,
+        askW,
+        bidLabelX: center - labelGap,
+        askLabelX: center + labelGap,
+    };
+}
+
 /** Hide a row when a filter bound is set and the value falls outside it. A bound of 0 is off. */
 export function footprintRowPasses(level: FootprintLevel, bounds: { volume?: [number, number]; bid?: [number, number]; ask?: [number, number] }): boolean {
     return inRange(level.bid + level.ask, bounds.volume) && inRange(level.bid, bounds.bid) && inRange(level.ask, bounds.ask);

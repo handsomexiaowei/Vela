@@ -55,11 +55,16 @@ call `setChartTypeData` again. A market change drops the series; set it again af
 `buildFootprintFromTrades`, `footprintSide`, `footprintPoc` and `footprintSummary`
 are pure. `autoTickSize` and `bucketPrice` are the row math they share with TPO.
 
-Behind the numbers, bid volume grows from the left in red and ask volume from the
-right in green. The point of control is outlined in white. Sizes use a `k` / `m`
-suffix (`1.2k`). A column narrower than 52 CSS pixels is not drawn, so at a wide
-zoom the bars stay candles; zoom in and the ladders open. Hide candles removes the
-bodies for the whole style.
+In Bid x Ask Profile the two bars grow out from the middle of the row: bid (red)
+to the left, ask (green) to the right. Length is that side divided by the largest
+bid or ask in the bar, so the longest side reaches the edge of the cell. The bid
+number sits just left of the center, right-aligned; the ask number sits just right
+of it, left-aligned (`80.3` then `100.0`, not one centered `bid x ask` string).
+Volume and Delta keep a single bar drawn from the left edge and one centered
+number. The point of control is outlined in white. Sizes use a `k` / `m` suffix
+(`1.2k`). A column narrower than 52 CSS pixels is not drawn, so at a wide zoom the
+bars stay candles; zoom in and the ladders open. Hide candles removes the bodies
+for the whole style.
 
 Hovering a cell shows the row's price range (`80640 – 80896`), bid x ask, the
 bar's volume, its delta, and the hint "Shift to magnify". Shift still zooms the

@@ -1,13 +1,14 @@
-// Footprint columns in the hosted chart's arrangement: a wide box per bar, bid
-// volume growing from the left and ask volume from the right, `bid x ask` in
-// front with a `k` suffix, a white POC outline, imbalance outlines, and a stat
-// table under the box. Narrow columns stay candles (the layer draws nothing).
+// Footprint columns in the hosted chart's arrangement: a wide box per bar. In
+// Bid x Ask Profile the red bid bar grows left from the row's center and the green
+// ask bar grows right, with each number hugging that center. Volume and Delta keep
+// a single bar from the left edge. Narrow columns stay candles.
 import type { OHLCV } from '../../../core/model/ohlcv';
 import type { Translator } from '../../../core/i18n/types';
 import { msg } from '../../../core/i18n/message';
 import { withAlpha } from '../../../core/color';
 import { BEARISH, BULLISH, HIGHLIGHT, SLATE_DEEP } from '../../../core/palette';
 import {
+    bidAskRowGeometry,
     footprintColumnVisible,
     footprintDrawsText,
     footprintRowPasses,
@@ -86,7 +87,13 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
         const va = style.valueArea ? footprintValueArea(levels, series.tickSize, style.valueAreaPct / 100) : null;
         const pocPrice = va?.pocPrice ?? null;
         let maxSide = 0;
-        for (const level of levels) maxSide = Math.max(maxSide, level.bid, level.ask, Math.abs(level.ask - level.bid));
+        let maxTotal = 0;
+        let maxAbsDelta = 0;
+        for (const level of levels) {
+            maxSide = Math.max(maxSide, level.bid, level.ask);
+            maxTotal = Math.max(maxTotal, level.bid + level.ask);
+            maxAbsDelta = Math.max(maxAbsDelta, Math.abs(level.ask - level.bid));
+        }
         const showText = style.showNumbers && (style.shrinkNumbers || footprintDrawsText(colW, 12));
         let top = Infinity;
         let bottom = -Infinity;
@@ -97,7 +104,7 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
             const { y, h } = box;
             ctx.fillStyle = style.areaBackground;
             ctx.fillRect(x, y, colW, h);
-            paintSides(ctx, x, y, colW, h, level, maxSide, style);
+            paintSides(ctx, x, y, colW, h, level, style.mode === 'volume' ? maxTotal : style.mode === 'delta' ? maxAbsDelta : maxSide, style);
             if (style.imbalance && footprintSide(level, ratio) !== 'neutral') {
                 ctx.strokeStyle = footprintSide(level, ratio) === 'ask' ? style.askColor : style.bidColor;
                 ctx.lineWidth = style.imbalanceWidth;
@@ -180,16 +187,14 @@ function paintSides(
         ctx.fillRect(x, yy, w, hh);
         return;
     }
-    const half = colW / 2;
-    const scale = maxSide > 0 ? half / maxSide : 0;
-    if (level.bid > 0) {
+    const row = bidAskRowGeometry(x, colW, level.bid, level.ask, maxSide);
+    if (row.bidW > 0) {
         ctx.fillStyle = withAlpha(style.bidColor, style.gradientCells ? 0.35 + 0.55 * (level.bid / maxSide) : 0.8);
-        ctx.fillRect(x, yy, level.bid * scale, hh);
+        ctx.fillRect(row.bidX, yy, row.bidW, hh);
     }
-    if (level.ask > 0) {
-        const w = level.ask * scale;
+    if (row.askW > 0) {
         ctx.fillStyle = withAlpha(style.askColor, style.gradientCells ? 0.35 + 0.55 * (level.ask / maxSide) : 0.8);
-        ctx.fillRect(x + colW - w, yy, w, hh);
+        ctx.fillRect(row.askX, yy, row.askW, hh);
     }
 }
 
@@ -203,31 +208,48 @@ function paintCellText(
     style: FootprintStyle,
     ratio: number,
 ): void {
-    const label = cellLabel(level, style);
-    if (!label) return;
+    const values = cellValuesOf(level, style);
     let size = style.autoTextSize ? Math.max(9, Math.min(13, Math.floor(h * 0.72))) : style.textSize;
-    ctx.textAlign = 'center';
     const side = footprintSide(level, ratio);
-    ctx.fillStyle = style.recolorValues && side !== 'neutral' ? (side === 'ask' ? style.askColor : style.bidColor) : style.textColor;
+    const ink = style.recolorValues && side !== 'neutral' ? (side === 'ask' ? style.askColor : style.bidColor) : style.textColor;
+    ctx.fillStyle = ink;
+    if (values.kind === 'pair') {
+        const room = colW / 2 - 6;
+        for (;;) {
+            ctx.font = `${size}px ${FIGURES}`;
+            const wide = Math.max(ctx.measureText(values.bid).width, ctx.measureText(values.ask).width);
+            if (!style.shrinkNumbers || wide <= room || size <= 8) break;
+            size -= 1;
+        }
+        if (Math.max(ctx.measureText(values.bid).width, ctx.measureText(values.ask).width) > colW / 2 - 2) return;
+        const geo = bidAskRowGeometry(x, colW, 0, 0, 1);
+        const cy = y + h / 2;
+        ctx.textAlign = 'right';
+        ctx.fillText(values.bid, geo.bidLabelX, cy);
+        ctx.textAlign = 'left';
+        ctx.fillText(values.ask, geo.askLabelX, cy);
+        return;
+    }
     for (;;) {
         ctx.font = `${size}px ${FIGURES}`;
-        if (!style.shrinkNumbers || ctx.measureText(label).width <= colW - 4 || size <= 8) break;
+        if (!style.shrinkNumbers || ctx.measureText(values.text).width <= colW - 4 || size <= 8) break;
         size -= 1;
     }
-    if (ctx.measureText(label).width > colW - 2) return;
-    ctx.fillText(label, x + colW / 2, y + h / 2);
+    if (ctx.measureText(values.text).width > colW - 2) return;
+    ctx.textAlign = 'center';
+    ctx.fillText(values.text, x + colW / 2, y + h / 2);
 }
 
-function cellLabel(level: FootprintLevel, style: FootprintStyle): string {
+function cellValuesOf(level: FootprintLevel, style: FootprintStyle): { kind: 'pair'; bid: string; ask: string } | { kind: 'single'; text: string } {
     const values = style.cellValues === 'auto' ? (style.mode === 'bidAsk' ? 'bidAsk' : style.mode) : style.cellValues;
-    if (style.averageTradeSize && values === 'bidAsk') {
+    if (values === 'volume') return { kind: 'single', text: formatFootprintQty(level.bid + level.ask) };
+    if (values === 'delta') return { kind: 'single', text: signedQty(level.ask - level.bid) };
+    if (style.averageTradeSize) {
         const bid = level.bidCount ? level.bid / level.bidCount : level.bid;
         const ask = level.askCount ? level.ask / level.askCount : level.ask;
-        return `${formatFootprintQty(bid)} x ${formatFootprintQty(ask)}`;
+        return { kind: 'pair', bid: formatFootprintQty(bid), ask: formatFootprintQty(ask) };
     }
-    if (values === 'volume') return formatFootprintQty(level.bid + level.ask);
-    if (values === 'delta') return signedQty(level.ask - level.bid);
-    return `${formatFootprintQty(level.bid)} x ${formatFootprintQty(level.ask)}`;
+    return { kind: 'pair', bid: formatFootprintQty(level.bid), ask: formatFootprintQty(level.ask) };
 }
 
 function paintStats(

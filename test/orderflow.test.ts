@@ -8,6 +8,7 @@ import {
     computeTpoFromTrades,
     computeTpoProfiles,
     estimateFootprintFromBars,
+    bidAskRowGeometry,
     footprintDrawsText,
     footprintFromLuxalgo,
     footprintPoc,
@@ -155,6 +156,23 @@ describe('footprint aggregation', () => {
 });
 
 describe('footprint marks and the hosted feed', () => {
+    it('grows Bid x Ask bars out from the center, with labels on either side of it', () => {
+        const row = bidAskRowGeometry(0, 100, 40, 80, 80);
+        expect(row.center).toBe(50);
+        // Bid extends left from the center; 40/80 of the half-width.
+        expect(row.bidX + row.bidW).toBe(50);
+        expect(row.bidW).toBe(25);
+        // Ask extends right from the center and the max side fills the half.
+        expect(row.askX).toBe(50);
+        expect(row.askW).toBe(50);
+        expect(row.bidLabelX).toBeLessThan(row.center);
+        expect(row.askLabelX).toBeGreaterThan(row.center);
+        const quiet = bidAskRowGeometry(10, 80, 0, 0, 5);
+        expect(quiet.bidW).toBe(0);
+        expect(quiet.askW).toBe(0);
+        expect(quiet.askX).toBe(quiet.center);
+    });
+
     it('prints a k or m suffix and leaves small sizes plain', () => {
         expect(formatFootprintQty(1200)).toBe('1.2k');
         expect(formatFootprintQty(12000)).toBe('12k');

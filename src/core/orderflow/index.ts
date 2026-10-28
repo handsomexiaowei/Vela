@@ -25,6 +25,7 @@ export {
 } from './footprint';
 export {
     FOOTPRINT_MIN_COLUMN_PX,
+    bidAskRowGeometry,
     footprintColumnVisible,
     footprintRowPasses,
     footprintStacks,
@@ -34,6 +35,7 @@ export {
     priceRevisitedAt,
     rebucketFootprint,
     unfinishedAuctions,
+    type BidAskRowGeometry,
     type FootprintStats,
     type FootprintValueArea,
     type ImbalanceStack,
