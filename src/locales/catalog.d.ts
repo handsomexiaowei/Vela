@@ -276,6 +276,7 @@ export interface VelaCoreMessageCatalog {
     'chart.tpo.vpPosition': string;
     'chart.tpo.vpPosition.left': string;
     'chart.tpo.vpPosition.right': string;
+    'chart.tpo.vpRows': string;
     'chart.tpo.vpVaOpacity': string;
     'chart.tpo.vpValueArea': string;
     'chart.tpo.vpWidth': string;

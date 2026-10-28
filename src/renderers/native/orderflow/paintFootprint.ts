@@ -8,8 +8,11 @@ import { msg } from '../../../core/i18n/message';
 import { withAlpha } from '../../../core/color';
 import { BEARISH, BULLISH, HIGHLIGHT, SLATE_DEEP } from '../../../core/palette';
 import {
+    FOOTPRINT_TARGET_ROW_PX,
+    autoRowTick,
     bidAskRowGeometry,
     footprintColumnVisible,
+    rebucketFootprint,
     footprintDrawsText,
     footprintRowPasses,
     footprintSide,
@@ -29,7 +32,7 @@ const TEXT = '#f4f4f4';
 const POC_INK = '#f2f2f2';
 const FIGURES = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
-const TIP_BID_ASK = msg('chart.footprint.tip.bidAsk', 'Bid x Ask');
+const TIP_BID_ASK = msg('chart.footprint.tip.bidAsk', 'Bid × Ask');
 const TIP_VOLUME = msg('chart.footprint.tip.volume', 'Volume');
 const TIP_DELTA = msg('chart.footprint.tip.delta', 'Delta');
 const TIP_SHIFT = msg('chart.footprint.tip.shift', 'Shift to magnify');
@@ -58,13 +61,13 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
     const { series, times, coords, scale, bounds, i18n } = input;
     if (series.bars.length === 0 || !(series.tickSize > 0) || times.length === 0) return;
     const style = readStyle(input.settings);
-    const byTime = new Map<number, FootprintBar>();
-    for (const bar of series.bars) byTime.set(bar.time, bar);
     const range = coords.visibleLogicalRange();
     const i0 = Math.max(0, Math.floor(range.from));
     const i1 = Math.min(times.length - 1, Math.ceil(range.to));
     const pitch = coords.pxPerBar();
-    const colW = Math.max(4, pitch * 0.92);
+    const displayTick = footprintDisplayTick(input, series.tickSize);
+    const drawn = displayTick > series.tickSize * 1.01 ? rebucketFootprint(series, displayTick) : series;
+    const colW = Math.max(8, pitch * 0.9);
     const ratio = style.imbalanceRatioPct / 100;
     let hit: CellHit | null = null;
 
@@ -76,15 +79,15 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
     ctx.lineJoin = 'miter';
 
     for (let i = i0; i <= i1; i += 1) {
-        const bar = byTime.get(times[i]!);
+        const bar = drawn.bars.find((b) => b.time === times[i]!);
         if (!bar || bar.levels.length === 0) continue;
-        const wide = footprintColumnVisible(colW);
+        const wide = footprintColumnVisible(pitch);
         if (!wide && !style.hideCandles) continue;
         const cx = coords.logicalToX(i);
         const x = placeColumn(cx, pitch, colW, style.position);
         const levels = bar.levels.filter((level) => footprintRowPasses(level, style.filters));
         if (levels.length === 0) continue;
-        const va = style.valueArea ? footprintValueArea(levels, series.tickSize, style.valueAreaPct / 100) : null;
+        const va = style.valueArea ? footprintValueArea(levels, drawn.tickSize, style.valueAreaPct / 100) : null;
         const pocPrice = va?.pocPrice ?? null;
         let maxSide = 0;
         let maxTotal = 0;
@@ -99,7 +102,7 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
         let bottom = -Infinity;
 
         for (const level of levels) {
-            const box = rowBox(coords, scale, bounds, level.price, series.tickSize);
+            const box = rowBox(coords, scale, bounds, level.price, drawn.tickSize);
             if (!box) continue;
             const { y, h } = box;
             ctx.fillStyle = style.areaBackground;
@@ -115,10 +118,10 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
                 ctx.lineWidth = style.pocWidth;
                 ctx.strokeRect(x + 0.5, y + 0.5, colW - 1, Math.max(1, h - 1));
             }
-            if (showText && h >= 10) paintCellText(ctx, x, y, colW, h, level, style, ratio);
+            if (showText && h >= 8) paintCellText(ctx, x, y, colW, h, level, style, ratio);
             if (y < top) top = y;
             if (y + h > bottom) bottom = y + h;
-            if (input.cursor && contains(input.cursor, x, y, colW, h)) hit = { bar, level, tick: series.tickSize, x, y };
+            if (input.cursor && contains(input.cursor, x, y, colW, h)) hit = { bar, level, tick: drawn.tickSize, x, y };
         }
         if (!Number.isFinite(top)) continue;
 
@@ -131,7 +134,7 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
         }
         if (style.unfinished) {
             for (const auction of unfinishedAuctions(levels, style.unfinishedMin)) {
-                const y = coords.priceToY(auction.price + series.tickSize / 2, scale, bounds);
+                const y = coords.priceToY(auction.price + drawn.tickSize / 2, scale, bounds);
                 const end = style.unfinishedExtend ? revisitX(input, times[i]!, auction.price) : x + colW + 18;
                 ctx.strokeStyle = HIGHLIGHT;
                 ctx.lineWidth = style.unfinishedWidth;
@@ -145,7 +148,7 @@ export function paintFootprint(ctx: CanvasRenderingContext2D, input: FootprintPa
         }
         if (style.stacked) {
             for (const stack of footprintStacks(levels, ratio, style.stackedMin)) {
-                const y1 = coords.priceToY(stack.toPrice + series.tickSize, scale, bounds);
+                const y1 = coords.priceToY(stack.toPrice + drawn.tickSize, scale, bounds);
                 const y2 = coords.priceToY(stack.fromPrice, scale, bounds);
                 ctx.fillStyle = stack.side === 'ask' ? style.askColor : style.bidColor;
                 const bx = stack.side === 'ask' ? x + colW - 3 : x;
@@ -264,43 +267,51 @@ function paintStats(
     i18n: Translator,
 ): void {
     const stats = footprintStats(bar);
-    const lines: string[] = [];
-    if (style.statTotal) lines.push(formatFootprintQty(stats.volume));
-    if (style.statBuy) lines.push(formatFootprintQty(stats.ask));
-    if (style.statSell) lines.push(formatFootprintQty(stats.bid));
-    if (style.statBuyPct) lines.push(`${Math.round(stats.buyPct)}%`);
-    if (style.statSellPct) lines.push(`${Math.round(stats.sellPct)}%`);
-    if (style.statDelta) lines.push(signedQty(stats.delta));
-    if (style.statDeltaPct) lines.push(`${stats.deltaPct >= 0 ? '+' : ''}${Math.round(stats.deltaPct)}%`);
-    if (style.statTrades) lines.push(String(stats.tradeCount));
-    if (style.statBidCount) lines.push(String(stats.bidCount));
-    if (style.statAskCount) lines.push(String(stats.askCount));
-    if (lines.length === 0) return;
+    // One line under the box. Defaults are sell then buy (both unsigned), which is
+    // the pair the hosted chart prints there — not a two-line total and delta.
+    const parts: string[] = [];
+    if (style.statSell) parts.push(formatFootprintQty(stats.bid));
+    if (style.statBuy) parts.push(formatFootprintQty(stats.ask));
+    if (style.statTotal) parts.push(formatFootprintQty(stats.volume));
+    if (style.statDelta) parts.push(signedQty(stats.delta));
+    if (style.statBuyPct) parts.push(`${Math.round(stats.buyPct)}%`);
+    if (style.statSellPct) parts.push(`${Math.round(stats.sellPct)}%`);
+    if (style.statDeltaPct) parts.push(`${stats.deltaPct >= 0 ? '+' : ''}${Math.round(stats.deltaPct)}%`);
+    if (style.statTrades) parts.push(String(stats.tradeCount));
+    if (style.statBidCount) parts.push(String(stats.bidCount));
+    if (style.statAskCount) parts.push(String(stats.askCount));
+    if (parts.length === 0) return;
     const size = style.statTextSize;
-    const lineH = size + 2;
-    const block = lines.length * lineH;
-    let y = style.statPosition === 'above' ? top - block - 2 : bottom + 2;
-    if (y < bounds.top) y = bounds.top;
-    if (y + block > bounds.top + bounds.height) y = bounds.top + bounds.height - block;
+    let y = style.statPosition === 'above' ? top - size - 2 : bottom + size / 2 + 2;
+    if (y < bounds.top + size / 2) y = bounds.top + size / 2;
+    if (y > bounds.top + bounds.height - 2) y = bounds.top + bounds.height - size / 2;
     ctx.font = `${size}px ${FIGURES}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = style.textColor;
-    lines.forEach((line, i) => ctx.fillText(line, x + colW / 2, y + i * lineH + size / 2));
+    ctx.fillText(parts.join('  '), x + colW / 2, y);
     void i18n;
 }
 
 function paintTooltip(ctx: CanvasRenderingContext2D, hit: CellHit, cursor: { x: number; y: number }, bounds: PaneBounds, coords: CoordinateSystem, i18n: Translator): void {
-    const stats = footprintStats(hit.bar);
-    const lines = [
-        `${formatPrice(hit.level.price)} – ${formatPrice(hit.level.price + hit.tick)}`,
-        `${i18n.t(TIP_BID_ASK)}  ${formatFootprintQty(hit.level.bid)} x ${formatFootprintQty(hit.level.ask)}`,
-        `${i18n.t(TIP_VOLUME)}  ${formatFootprintQty(stats.volume)}`,
-        `${i18n.t(TIP_DELTA)}  ${signedQty(stats.delta)}`,
-        i18n.t(TIP_SHIFT),
-    ];
+    const bid = formatFootprintQty(hit.level.bid);
+    const ask = formatFootprintQty(hit.level.ask);
+    const volume = hit.level.bid + hit.level.ask;
+    const delta = hit.level.ask - hit.level.bid;
+    const title = `${formatPrice(hit.level.price)} – ${formatPrice(hit.level.price + hit.tick)}`;
+    const shift = `⇧ ${i18n.t(TIP_SHIFT)}`;
+    ctx.font = `600 12px ${FIGURES}`;
+    const titleW = ctx.measureText(title).width;
     ctx.font = `11px ${FIGURES}`;
-    const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + 16;
-    const height = lines.length * 14 + 8;
+    const rowLabel = `${i18n.t(TIP_BID_ASK)}  `;
+    const mid = ' × ';
+    const rowW = ctx.measureText(rowLabel).width + ctx.measureText(bid).width + ctx.measureText(mid).width + ctx.measureText(ask).width;
+    const volW = ctx.measureText(`${i18n.t(TIP_VOLUME)}  ${formatFootprintQty(volume)}`).width;
+    const deltaText = signedQty(delta);
+    const deltaW = ctx.measureText(`${i18n.t(TIP_DELTA)}  ${deltaText}`).width;
+    ctx.font = `10px ${FIGURES}`;
+    const shiftW = ctx.measureText(shift).width;
+    const width = Math.max(titleW, rowW, volW, deltaW, shiftW) + 16;
+    const height = 78;
     let x = cursor.x + 14;
     let y = cursor.y + 14;
     if (x + width > coords.width) x = cursor.x - width - 8;
@@ -310,9 +321,31 @@ function paintTooltip(ctx: CanvasRenderingContext2D, hit: CellHit, cursor: { x: 
     ctx.strokeStyle = '#3a3a3a';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-    ctx.fillStyle = TEXT;
     ctx.textAlign = 'left';
-    lines.forEach((line, i) => ctx.fillText(line, x + 8, y + 12 + i * 14));
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = TEXT;
+    ctx.font = `600 12px ${FIGURES}`;
+    ctx.fillText(title, x + 8, y + 14);
+    ctx.font = `11px ${FIGURES}`;
+    let cursorX = x + 8;
+    ctx.fillStyle = TEXT;
+    ctx.fillText(rowLabel, cursorX, y + 30);
+    cursorX += ctx.measureText(rowLabel).width;
+    ctx.fillStyle = BEARISH;
+    ctx.fillText(bid, cursorX, y + 30);
+    cursorX += ctx.measureText(bid).width;
+    ctx.fillStyle = TEXT;
+    ctx.fillText(mid, cursorX, y + 30);
+    cursorX += ctx.measureText(mid).width;
+    ctx.fillStyle = BULLISH;
+    ctx.fillText(ask, cursorX, y + 30);
+    ctx.fillStyle = TEXT;
+    ctx.fillText(`${i18n.t(TIP_VOLUME)}  ${formatFootprintQty(volume)}`, x + 8, y + 46);
+    ctx.fillStyle = delta > 0 ? BULLISH : delta < 0 ? BEARISH : TEXT;
+    ctx.fillText(`${i18n.t(TIP_DELTA)}  ${deltaText}`, x + 8, y + 62);
+    ctx.fillStyle = '#9a9a9a';
+    ctx.font = `10px ${FIGURES}`;
+    ctx.fillText(shift, x + 8, y + 74);
 }
 
 function extendRule(ctx: CanvasRenderingContext2D, input: FootprintPaintInput, time: number, price: number, x0: number, color: string, width: number): void {
@@ -350,6 +383,32 @@ function rowBox(coords: CoordinateSystem, scale: PriceScale, bounds: PaneBounds,
     const h = Math.abs(y2 - y1);
     if (h < 0.4 || y > bounds.top + bounds.height || y + h < bounds.top) return null;
     return { y, h };
+}
+
+/** Explicit row size from the select (`'auto'` or a number). A legacy `tickSize` of 0 stays automatic. */
+function footprintDisplayTick(input: FootprintPaintInput, baseTick: number): number {
+    const chosen = explicitRowSize(input.settings);
+    if (chosen) return Math.max(chosen, baseTick > 0 ? baseTick : 0);
+    const raw = priceSpan(input.coords, input.scale, input.bounds, FOOTPRINT_TARGET_ROW_PX);
+    return Math.max(autoRowTick(raw, baseTick), baseTick > 0 ? baseTick : 0);
+}
+
+function explicitRowSize(settings: Record<string, unknown>): number | undefined {
+    const row = settings.rowSize;
+    if (row === 'auto') return undefined;
+    if (typeof row === 'string' && row !== '') {
+        const n = Number(row);
+        if (n > 0) return n;
+    }
+    if (typeof row === 'number' && row > 0) return row;
+    if (row == null && typeof settings.tickSize === 'number' && settings.tickSize > 0) return settings.tickSize;
+    return undefined;
+}
+
+function priceSpan(coords: CoordinateSystem, scale: PriceScale, bounds: PaneBounds, px: number): number {
+    if (bounds.height <= 0) return 0;
+    const y = bounds.top + bounds.height * 0.5;
+    return Math.abs(coords.yToPrice(y, scale, bounds) - coords.yToPrice(y + px, scale, bounds));
 }
 
 function placeColumn(cx: number, pitch: number, colW: number, position: 'left' | 'center' | 'right'): number {
@@ -459,12 +518,12 @@ function readStyle(bag: Record<string, unknown>): FootprintStyle {
         statTable: flag(bag, 'statTable', true),
         statPosition: pick(bag.statPosition, ['below', 'above'], 'below'),
         statTextSize: Math.max(8, Math.round(numberOf(bag, 'statTextSize', 10))),
-        statTotal: flag(bag, 'statTotal', true),
-        statBuy: flag(bag, 'statBuy', false),
-        statSell: flag(bag, 'statSell', false),
+        statTotal: flag(bag, 'statTotal', false),
+        statBuy: flag(bag, 'statBuy', true),
+        statSell: flag(bag, 'statSell', true),
         statBuyPct: flag(bag, 'statBuyPct', false),
         statSellPct: flag(bag, 'statSellPct', false),
-        statDelta: flag(bag, 'statDelta', true),
+        statDelta: flag(bag, 'statDelta', false),
         statDeltaPct: flag(bag, 'statDeltaPct', false),
         statTrades: flag(bag, 'statTrades', false),
         statBidCount: flag(bag, 'statBidCount', false),

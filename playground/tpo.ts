@@ -46,7 +46,8 @@ async function loadHosted(): Promise<boolean> {
     await chart.setMarket({ data: hosted, timeframe: '30' });
     const last = hosted[hosted.length - 1]!.time;
     const sessionStart = Math.floor(last / 86_400_000) * 86_400_000;
-    chart.setVisibleRange({ from: sessionStart - period, to: last + 2 * period });
+    // Two sessions, each left-aligned inside its own day.
+    chart.setVisibleRange({ from: sessionStart - 86_400_000, to: sessionStart + 86_400_000 });
     const status = document.querySelector<HTMLElement>('#bar');
     if (status) status.textContent = `Playground · TPO from 30-minute candles · ${hosted.length} bars`;
     return true;

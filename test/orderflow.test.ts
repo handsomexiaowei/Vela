@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OHLCV } from '../src/core/model/ohlcv';
 import {
+    autoRowTick,
     autoTickSize,
     bucketPrice,
     buildFootprintFromTrades,
@@ -9,6 +10,7 @@ import {
     computeTpoProfiles,
     estimateFootprintFromBars,
     bidAskRowGeometry,
+    footprintColumnVisible,
     footprintDrawsText,
     footprintFromLuxalgo,
     footprintPoc,
@@ -23,8 +25,10 @@ import {
     priceRevisitedAt,
     profileWithValueArea,
     rebucketFootprint,
+    rebucketTpoProfile,
     tpoDrawsLetters,
     tpoLetter,
+    tpoPeriodSlot,
     tpoPoorExtremes,
     tpoSinglePrintRows,
     unfinishedAuctions,
@@ -139,8 +143,9 @@ describe('footprint aggregation', () => {
         expect(footprintDrawsText(36, 12)).toBe(true);
         expect(footprintDrawsText(35, 12)).toBe(false);
         expect(footprintDrawsText(40, 11)).toBe(false);
-        expect(tpoDrawsLetters(8, 10)).toBe(true);
+        expect(tpoDrawsLetters(8, 7)).toBe(true);
         expect(tpoDrawsLetters(7, 10)).toBe(false);
+        expect(tpoDrawsLetters(8, 6)).toBe(false);
     });
 
     it('spreads a bar\'s volume across its rows without inventing or dropping size', () => {
@@ -156,6 +161,16 @@ describe('footprint aggregation', () => {
 });
 
 describe('footprint marks and the hosted feed', () => {
+    it('opens a ladder once bars are about 60px apart and snaps an auto row onto a nice step', () => {
+        expect(footprintColumnVisible(60)).toBe(true);
+        expect(footprintColumnVisible(59)).toBe(false);
+        // 64 is closer to 63 than the next multiple of the hosted tick (70).
+        expect(autoRowTick(63, 10)).toBe(64);
+        // A multiple of the hosted tick wins when it is as close as the nice step.
+        expect(autoRowTick(60, 10)).toBe(60);
+        expect(autoRowTick(64, 10)).toBe(64);
+    });
+
     it('grows Bid x Ask bars out from the center, with labels on either side of it', () => {
         const row = bidAskRowGeometry(0, 100, 40, 80, 80);
         expect(row.center).toBe(50);
@@ -324,6 +339,29 @@ describe('TPO profiles', () => {
         expect(fromTrades[0]!.rows).toEqual(fromBars[0]!.rows);
         expect(fromTrades[0]!.ib).toBeNull();
         expect(fromBars[0]!.ib).toBeNull();
+    });
+
+    it('places each period in its own slot from the session start, growing right', () => {
+        expect(tpoPeriodSlot(0, 48, 480)).toEqual({ x: 0, width: 9 });
+        expect(tpoPeriodSlot(1, 48, 480)).toEqual({ x: 10, width: 9 });
+        expect(tpoPeriodSlot(47, 48, 480).x).toBe(470);
+        // A period past the session stays in the last slot, so one day cannot run into the next.
+        expect(tpoPeriodSlot(80, 48, 480).x).toBe(470);
+    });
+
+    it('merges letters onto a coarser row without dropping a period', () => {
+        const [profile] = computeTpoProfiles(
+            [
+                { time: T0, open: 100, high: 101, low: 100, close: 101 },
+                { time: T0 + period, open: 101, high: 102, low: 101, close: 102 },
+            ],
+            { tickSize: 1, valueArea: 0.7, initialBalancePeriods: 0 },
+        );
+        const coarse = rebucketTpoProfile(profile!, 2);
+        expect(coarse.tickSize).toBe(2);
+        expect(coarse.rows.map((row) => row.price)).toEqual([100, 102]);
+        expect(coarse.rows[0]!.periods).toEqual([0, 1]);
+        expect(coarse.rows[1]!.periods).toEqual([1]);
     });
 
     it('re-grows the value area without touching the letters', () => {

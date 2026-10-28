@@ -14,8 +14,8 @@ A footprint bar is a column of price rows. Each row prints **bid × ask**: sell-
 size, then buy-aggressor size. A row turns green when ask size is at least the
 imbalance ratio times bid size (the default ratio is 3), and red the other way. A
 row with size on only one side takes that side's color. The heaviest row of the bar
-is outlined — the point of control — and, when the column is wide enough, the bar's
-delta (ask − bid) and total size sit under the column.
+is outlined — the point of control — and, under the column, the bar's sell
+volume and buy volume sit on one line.
 
 Numbers are drawn only when the cell is at least 36×12 pixels. Below that the cell
 stays a colored block, darker where the row traded more, so a zoomed-out chart is
@@ -62,13 +62,20 @@ number sits just left of the center, right-aligned; the ask number sits just rig
 of it, left-aligned (`80.3` then `100.0`, not one centered `bid x ask` string).
 Volume and Delta keep a single bar drawn from the left edge and one centered
 number. The point of control is outlined in white. Sizes use a `k` / `m` suffix
-(`1.2k`). A column narrower than 52 CSS pixels is not drawn, so at a wide zoom the
-bars stay candles; zoom in and the ladders open. Hide candles removes the bodies
-for the whole style.
+(`1.2k`). The box is about nine tenths of the bar spacing, so neighboring ladders
+keep a gap. Ladders open once neighboring bars are about 60 CSS pixels apart;
+wider zooms stay candles. Hide candles removes the bodies for the whole style.
+Row size Auto targets a row about 16 CSS pixels tall and snaps that step onto a
+readable multiple of the feed's own tick (a step such as 64 can win). The select
+also offers fixed sizes; Auto is the default.
 
-Hovering a cell shows the row's price range (`80640 – 80896`), bid x ask, the
-bar's volume, its delta, and the hint "Shift to magnify". Shift still zooms the
-chart through the normal key; the ladder does not open a separate magnifier.
+Under the box, the default stat line is sell volume then buy volume, in one small
+line. Total, delta, and the other columns are off until you turn them on.
+
+Hovering a cell shows that row: a bold price range (`80768 – 80832`), Bid × Ask
+with the bid in red and the ask in green, the row's volume, its delta in green or
+red, and the hint "⇧ Shift to magnify". Shift still zooms the chart through the
+normal key; the ladder does not open a separate magnifier.
 
 ### Settings
 
@@ -80,7 +87,7 @@ The Footprint section in chart settings has these groups:
 | VA & POC | Value area and its percent, line width, point of control, POC width, extend POC until a later bar trades through it |
 | Imbalances | Highlight, ratio in percent (300 = 3×), highlight width, recolor the numbers, stacked imbalances and the minimum run |
 | Unfinished auctions | On/off, minimum volume that counts as a side, line width, extend the line until price revisits that level |
-| Stat table | Below or above the box, text size, and toggles for total, buy, sell, buy %, sell %, delta, delta %, trade count, bid count, ask count |
+| Stat table | Position (Below by default) and text size. Toggles for total, buy, sell, buy %, sell %, delta, delta %, trade count, bid count, ask count. Sell volume and buy volume are the ones on by default, printed on one line |
 | Filters | Optional min–max on volume, bid volume, and ask volume. A bound left at 0 is off |
 
 An extreme is unfinished when either side at that row is not strictly above the
@@ -92,16 +99,25 @@ minimum (default 3).
 One profile per session. The default session is a UTC day (24 hours from UTC
 midnight); the settings change the length and the hour offset. Inside a session
 each period — 30 minutes, unless you change it — receives one letter, **A–Z then
-a–x**. The letter is printed on every price row that period traded, packed left to
-right, so the longest row is the point of control.
+a–x**. The letter is printed on every price row that period traded. Each letter
+sits in that period's own column, starting at the session open on the left and
+growing right with time. A day's columns stay inside that day; they do not run
+into the next session. The longest row is the point of control.
 
 The value area starts at the point of control and grows by the heavier neighboring
 row until it holds 70% of the letters (an equal pair grows toward the lower price).
-Its high and low, and the point of control, are horizontal lines labeled VAH, VAL
-and POC. The initial balance is the price span of the first two periods, drawn as
-a box; turn it off, or change how many periods it covers, in the settings.
+By default the area is not filled and VAH, VAL, and POC are not labeled. The point
+of control is a white outline of that row, not a line across the session (Extend
+POC draws the line). The initial balance is the price span of the first hour,
+drawn as an orange bracket on the session's left edge.
 
-Letters become blocks once a cell is under 8×10 pixels.
+Blocks are translucent and sit over the candles, so the candles and any study
+painted with them stay visible. Color by time is on: early periods are a darker
+grey-blue, later periods a brighter blue, and rows inside the value area use a
+lighter tint. Outside the value area the blocks use 45% opacity. Letters in later
+periods are darker. Row size Auto targets a row about 9 CSS pixels tall.
+
+Letters become blocks once a cell is under 8×7 pixels.
 
 ```ts
 import { Vela, computeTpoProfiles, computeTpoFromTrades } from '@luxalgo/vela';
@@ -185,13 +201,15 @@ and pass them to the chart or to `computeTpoProfiles`.
 | Sessions | Session Day or Week, trading hours Full day or Custom, block interval in minutes (default 30), row size Auto |
 | Display | Show blocks, color each block by its period, theme Simple, outside-value-area opacity, show letters, block color |
 | Structure | Value area percent, VA fill, point of control, extend POC until price is reached again, POC/VAH/VAL labels, initial balance and its length in minutes (default 60), single prints, poor high/low |
-| Volume profile | On/off, position Right or Left, width percent, its own POC and value area, VA opacity, labels |
-| Markers | Open/close dots (yellow open, orange close) and a midpoint dash on the left of the profile |
+| Volume profile | Off by default. When on: 24 rows, position Right or Left, width 30%, its own POC, value area 70%, VA opacity 62%, labels |
+| Markers | Open (teal) and close (red) dots on the left of the session. The midpoint dash is off until you turn it on |
 
-A single print is a row with one letter. A poor high or poor low is that one-letter
-row sitting on the extreme of the profile. Blocks inside the value area are drawn
-solid; blocks outside use the outside opacity (default 35%). The initial balance
-defaults to 60 minutes, which is two 30-minute blocks.
+A single print is a row with one letter; the outline is off by default. A poor high
+or poor low is that one-letter row sitting on the extreme of the profile; the tag
+is off by default. Both stay available in Structure. Blocks inside the value area
+use a lighter tint; blocks outside use the outside opacity (default 45%). The
+initial balance defaults to 60 minutes, which is two 30-minute blocks. Value-area
+fill defaults to off.
 
 ## What the chart does not do
 

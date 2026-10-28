@@ -44,7 +44,10 @@ async function loadHosted(): Promise<boolean> {
     await chart.setMarket({ data: bars, timeframe: '1' });
     chart.setChartTypeData('footprint', series);
     const last = bars[bars.length - 1]!;
-    const start = bars[Math.max(0, bars.length - 6)]!.time;
+    // About 70px per bar on a 1920-wide playground, so the ladders are open
+    // (the style switches in at ~60px) and any older bar without a footprint
+    // stays a candle.
+    const start = bars[Math.max(0, bars.length - 22)]!.time;
     chart.setVisibleRange({ from: start - 60_000, to: last.time + 2 * 60_000 });
     status.textContent = `Hosted footprints · tick ${series.tickSize} · ${series.bars.length} bars`;
     return true;

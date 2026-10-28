@@ -3,12 +3,46 @@
 import { bucketPrice } from './tick-size';
 import { footprintSide, type FootprintBar, type FootprintLevel, type FootprintSeries, type FootprintSide } from './footprint';
 
-/** A footprint column is drawn only once it is at least this many CSS pixels wide.
- *  Narrower bars stay candles, so zooming in is what opens the ladders. */
-export const FOOTPRINT_MIN_COLUMN_PX = 52;
+/** Ladders open once neighboring bars are at least this many CSS pixels apart.
+ *  Below that the candles stay. The hosted chart switches in the same band
+ *  (about 60–80px). */
+export const FOOTPRINT_MIN_SPACING_PX = 60;
+/** @deprecated Use {@link FOOTPRINT_MIN_SPACING_PX}. Kept so older imports still type-check. */
+export const FOOTPRINT_MIN_COLUMN_PX = FOOTPRINT_MIN_SPACING_PX;
+/** Target height of one auto-sized footprint row. */
+export const FOOTPRINT_TARGET_ROW_PX = 16;
 
-export function footprintColumnVisible(columnWidth: number): boolean {
-    return columnWidth >= FOOTPRINT_MIN_COLUMN_PX;
+export function footprintColumnVisible(barSpacingPx: number): boolean {
+    return barSpacingPx >= FOOTPRINT_MIN_SPACING_PX;
+}
+
+/**
+ * Snap a raw price-per-row (the price span of `target` pixels) onto a nice step.
+ * Powers of two sit beside the 1/2/2.5/5 grid so a step like 64 can win. When
+ * `baseTick` is the feed's own row size, a multiple of it is used when that
+ * multiple is as close to the raw step as the nice value.
+ */
+export function autoRowTick(raw: number, baseTick = 0): number {
+    if (!(raw > 0) || !Number.isFinite(raw)) return baseTick > 0 ? baseTick : 1;
+    const exp = Math.floor(Math.log10(raw));
+    const cands: number[] = [];
+    for (let e = exp - 1; e <= exp + 2; e += 1) {
+        const base = 10 ** e;
+        for (const step of [1, 2, 2.5, 4, 5, 8, 10]) cands.push(step * base);
+        let p = 2 ** Math.max(0, Math.round(Math.log2(Math.max(base, 1))));
+        const cap = base * 16;
+        while (p <= cap) {
+            cands.push(p);
+            p *= 2;
+        }
+    }
+    const uniq = [...new Set(cands.map((c) => Number(c.toPrecision(12))))].filter((c) => c > 0).sort((a, b) => a - b);
+    const nice = uniq.find((c) => c >= raw - 1e-9) ?? uniq[uniq.length - 1]!;
+    if (!(baseTick > 0)) return nice;
+    const mult = Math.max(1, Math.ceil((raw - 1e-9) / baseTick)) * baseTick;
+    const snapped = Number(mult.toPrecision(12));
+    if (Math.abs(snapped - raw) <= Math.abs(nice - raw) + 1e-9) return snapped;
+    return nice;
 }
 
 /** Compact size the way the ladder prints it: `1.2k`, `12k`, `1.5m`. Below 1000 the

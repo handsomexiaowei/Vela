@@ -23,9 +23,12 @@ export function tpoLetter(index: number): string {
     return '*';
 }
 
-/** Letters draw when a cell clears both floors; otherwise the row is blocks. */
+/** Letters draw when a cell clears both floors; otherwise the row is blocks.
+ *  Height is low enough that an auto row (~9 CSS px) still prints its letter. */
 export const TPO_LETTER_MIN_WIDTH = 8;
-export const TPO_LETTER_MIN_HEIGHT = 10;
+export const TPO_LETTER_MIN_HEIGHT = 7;
+/** Target height of one auto-sized TPO row, in CSS pixels. */
+export const TPO_TARGET_ROW_PX = 9;
 
 export function tpoDrawsLetters(cellWidth: number, cellHeight: number): boolean {
     return cellWidth >= TPO_LETTER_MIN_WIDTH && cellHeight >= TPO_LETTER_MIN_HEIGHT;
@@ -280,6 +283,47 @@ function assemble(build: SessionBuild, rows: TpoRow[], tick: number, cfg: Resolv
         ...(build.open != null ? { open: build.open } : {}),
         ...(build.close != null ? { close: build.close } : {}),
     };
+}
+
+/** Where one period's block sits inside a session drawn from its start, growing right.
+ *  `sessionWidth` is the pixel width of `[sessionStart, sessionEnd)`. The block stays
+ *  inside that slot, so one day never runs into the next. */
+export function tpoPeriodSlot(periodIndex: number, periodCount: number, sessionWidth: number): { x: number; width: number } {
+    const n = Math.max(1, Math.round(periodCount) || 1);
+    const slot = sessionWidth / n;
+    const index = Math.min(n - 1, Math.max(0, periodIndex));
+    return { x: index * slot, width: Math.max(1, slot - 1) };
+}
+
+/**
+ * Fold a profile onto a coarser tick (auto row size while zoomed out). Periods that
+ * traded a merged row are united. A tick finer than the profile's own is ignored.
+ */
+export function rebucketTpoProfile(profile: TpoProfile, tick: number): TpoProfile {
+    if (!(tick > profile.tickSize * 1.01)) return profile;
+    const merged = new Map<number, { periods: Set<number>; volume: number }>();
+    for (const row of profile.rows) {
+        const edge = bucketPrice(row.price, tick);
+        let cell = merged.get(edge);
+        if (!cell) {
+            cell = { periods: new Set(), volume: 0 };
+            merged.set(edge, cell);
+        }
+        for (const period of row.periods) cell.periods.add(period);
+        if (row.volume != null && row.volume > 0) cell.volume += row.volume;
+    }
+    const rows: TpoRow[] = [...merged.entries()]
+        .map(([price, cell]) => {
+            const row: TpoRow = { price, periods: [...cell.periods].sort((a, b) => a - b) };
+            if (cell.volume > 0) row.volume = cell.volume;
+            return row;
+        })
+        .sort((a, b) => a.price - b.price);
+    if (rows.length === 0) return profile;
+    return profileWithValueArea(
+        { ...profile, tickSize: tick, rows, pocPrice: rows[0]!.price, vah: rows[rows.length - 1]!.price + tick, val: rows[0]!.price },
+        profile.valueArea,
+    );
 }
 
 /** Rows that a single period printed — a one-letter row. */

@@ -19,7 +19,7 @@ import type { SeriesDataEngine, SeriesDataEngineHost } from './registry';
 
 export function footprintEngine(): SeriesDataEngine {
     return new PublishingEngine((host, settings) => {
-        const tick = positive(settings.tickSize);
+        const tick = explicitTick(settings);
         const external = coerceFootprint(host.externalData());
         if (external) return tick ? rebucketFootprint(external, tick) : external;
         return estimateFootprintFromBars(host.bars(), { tickSize: tick, targetRows: 15 });
@@ -39,7 +39,7 @@ export function tpoEngine(): SeriesDataEngine {
             };
         }
         const profiles = computeTpoProfiles(host.bars(), {
-            tickSize: positive(settings.tickSize),
+            tickSize: explicitTick(settings),
             targetRows: 16,
             periodMs: blockMin * 60_000,
             sessionMs: session.ms,
@@ -147,6 +147,17 @@ function isRow(value: unknown): value is TpoRow {
     if (!value || typeof value !== 'object') return false;
     const row = value as TpoRow;
     return Number.isFinite(row.price) && Array.isArray(row.periods) && row.periods.every((n) => Number.isInteger(n) && n >= 0);
+}
+
+function explicitTick(settings: Record<string, unknown>): number | undefined {
+    const row = settings.rowSize;
+    if (row === 'auto') return undefined;
+    if (typeof row === 'string' && row !== '') {
+        const n = Number(row);
+        if (n > 0 && Number.isFinite(n)) return n;
+    }
+    if (typeof row === 'number' && row > 0) return row;
+    return positive(settings.tickSize);
 }
 
 function positive(value: unknown): number | undefined {
